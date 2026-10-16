@@ -2,15 +2,16 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "version": 2,
   "cleanUrls": true,
+  "framework": null,
   "functions": {
-    "api/*.py": {
-      "memory": 512,
-      "maxDuration": 15,
-      "excludeFiles": "{tests/**,scripts/**,promptlayer/vendor/**,docs/**,**/__pycache__/**,**/test_*.py,requirements-dev.txt,dev.py}"
-    },
     "api/compile.py": {
       "memory": 512,
       "maxDuration": 60,
+      "excludeFiles": "{tests/**,scripts/**,promptlayer/vendor/**,docs/**,**/__pycache__/**,**/test_*.py,requirements-dev.txt,dev.py}"
+    },
+    "api/*.py": {
+      "memory": 512,
+      "maxDuration": 15,
       "excludeFiles": "{tests/**,scripts/**,promptlayer/vendor/**,docs/**,**/__pycache__/**,**/test_*.py,requirements-dev.txt,dev.py}"
     }
   },

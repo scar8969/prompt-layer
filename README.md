@@ -317,7 +317,7 @@ curl -s -X POST localhost:8090/api/video -H 'Content-Type: application/json' \
 
 ```bash
 python dev.py          # http://127.0.0.1:8090   (emulates the Vercel layout)
-python -m pytest -q    # 233 tests
+python -m pytest -q    # 239 tests
 ```
 
 No dependencies — the service, the dataset and the functions are all standard
@@ -326,12 +326,14 @@ library.
 ## Deploy (Vercel)
 
 1. Import this repo at [vercel.com/new](https://vercel.com/new).
-2. Framework preset **Other**. No build command, no output directory.
+2. Framework preset **Other**. No build command, no output directory. The repo pins
+   this itself (`"framework": null`), so the import defaults do not matter.
 3. Deploy. `/` serves the UI; the nine files in `api/` answer at `/api/health`,
    `/api/models`, `/api/presets`, `/api/preflight`, `/api/improve`,
    `/api/storyboard`, `/api/reference`, `/api/video`, `/api/compile`.
 
-Two things about how Vercel treats this layout, both checked against their docs:
+Two things about how Vercel treats this layout, both checked against their docs and
+then against a real build:
 
 - Each `.py` file in `/api` becomes its own function, served at its file path,
   with the top-level name `handler` (a `BaseHTTPRequestHandler` subclass) — which
@@ -339,6 +341,43 @@ Two things about how Vercel treats this layout, both checked against their docs:
 - Do **not** add Flask, FastAPI or Django to `requirements.txt`. A detected Python
   framework preset takes precedence, and if one is detected the files under `/api`
   stop becoming separate functions. There are deliberately no dependencies here.
+
+### Four things the first real build taught us
+
+A `requirements.txt` in the root is by itself enough for Vercel to conclude this is
+a single Python application. It then goes looking for one entrypoint (`app.py`,
+`main.py`, `server.py`…) and refuses to build:
+
+```
+No python entrypoint found in default locations, but found potential entrypoints:
+  api/compile.py (variable: handler)
+  api/health.py (variable: handler)
+```
+
+Which preset applies is a *project* setting, so the fix belongs in the repo:
+`"framework": null` in `vercel.json` is "Other", and it overrides the dashboard.
+The build then mounts the nine functions and nothing else.
+
+Three more, all of them only visible from a real build:
+
+- **Order inside `functions` matters.** Vercel rejects a pattern that matches no
+  function after an earlier pattern claimed its files — with `api/*.py` first, the
+  `api/compile.py` entry (the one that gets 60s instead of 15s) failed the build
+  with *"doesn't match any Serverless Functions inside the `api` directory"*. The
+  specific pattern is listed first.
+- **`.vercelignore` is load-bearing.** Vercel serves the project directory as static
+  files, as-is, so without it `dev.py`, `tests/`, `scripts/`, `docs/` and
+  `requirements-dev.txt` are all downloadable from the deployment's URL — even
+  though `dev.py` refuses those same paths locally. What you check should be what
+  you shipped; the local emulator and the deployment should publish one allowlist.
+- **The CLI writes files into your tree.** A local `build` leaves `.python-version`,
+  `pyproject.toml` and `uv.lock` behind, describing a project that does not exist
+  (`name = "app"`, no dependencies). They are build output and are ignored — and a
+  `pyproject.toml` in the root is itself one of the triggers for the preset detection
+  above, so committing one would be worse than untidy.
+
+`tests/test_deploy.py` asserts all of it, so a regression fails in the suite rather
+than on Vercel.
 
 `vercel.json` sets memory and a timeout per function, and excludes the tests from
 the bundle. It does not need `includeFiles`: Python functions bundle every project
@@ -383,7 +422,9 @@ promptlayer/
   http.py             shared request/response helpers
 scripts/              the two parsers that generate the preset datasets
 dev.py                local emulation of the Vercel layout
-tests/                233 tests: datasets, assembly, improvement, the planner, the
+vercel.json           framework pinned to "Other", per-function memory/timeout
+.vercelignore         what is uploaded: the page, the functions, promptlayer/
+tests/                239 tests: datasets, assembly, improvement, the planner, the
                       deployment shape, the deployed entry points
 ```
 

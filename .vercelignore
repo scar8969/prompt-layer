@@ -1,0 +1,16 @@
+# What gets uploaded to Vercel. The site serves exactly two things: the page and
+# the functions — plus the package those functions import. Everything else here is
+# dev-only, and without this file the whole repo root is published as static files
+# (dev.py, the test suite, the parsers, the screenshots) because Vercel serves the
+# project directory as-is.
+#
+# This is the same allowlist rule dev.py enforces locally, so what you check in
+# the emulator is what the deployment actually exposes.
+tests/
+scripts/
+docs/
+dev.py
+requirements-dev.txt
+.pytest_cache/
+__pycache__/
+.vercel/

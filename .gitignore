@@ -1,9 +1,19 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
-.vercel/
 .venv/
 venv/
 env/
 .DS_Store
 *.log
+
+# Vercel: the linked project, and anything holding credentials.
+.vercel/
+.env*
+
+# Written by the CLI during a local `vercel build`; the remote build writes its own.
+# Nothing here is part of the project — the functions are stdlib-only, which
+# requirements.txt says in as many words.
+.python-version
+pyproject.toml
+uv.lock
