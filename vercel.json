@@ -4,14 +4,14 @@
   "cleanUrls": true,
   "functions": {
     "api/*.py": {
-      "includeFiles": "promptlayer/**",
       "memory": 512,
-      "maxDuration": 15
+      "maxDuration": 15,
+      "excludeFiles": "{tests/**,**/__pycache__/**,**/test_*.py,requirements-dev.txt,dev.py}"
     },
     "api/compile.py": {
-      "includeFiles": "promptlayer/**",
       "memory": 512,
-      "maxDuration": 60
+      "maxDuration": 60,
+      "excludeFiles": "{tests/**,**/__pycache__/**,**/test_*.py,requirements-dev.txt,dev.py}"
     }
   },
   "headers": [

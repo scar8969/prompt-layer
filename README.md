@@ -78,14 +78,22 @@ library.
 ## Deploy (Vercel)
 
 1. Import this repo at [vercel.com/new](https://vercel.com/new).
-2. Framework preset **Other**. No build command, no output directory — the repo
-   root is static and every file in `api/` becomes a function.
-3. Deploy. `/` serves the UI; the four functions answer under `/api/*`.
+2. Framework preset **Other**. No build command, no output directory.
+3. Deploy. `/` serves the UI; the four files in `api/` answer at `/api/health`,
+   `/api/models`, `/api/preflight`, `/api/compile`.
 
-`vercel.json` sets `includeFiles: promptlayer/**` on every function. That matters:
-the shared logic lives in a Python package outside `api/`, and without it the
-functions would import-fail at runtime with a 500. If a deploy ever 500s on
-`/api/health`, that is the first thing to check.
+Two things about how Vercel treats this layout, both checked against their docs:
+
+- Each `.py` file in `/api` becomes its own function, served at its file path,
+  with the top-level name `handler` (a `BaseHTTPRequestHandler` subclass) — which
+  is what each file here exports.
+- Do **not** add Flask, FastAPI or Django to `requirements.txt`. A detected Python
+  framework preset takes precedence, and if one is detected the files under `/api`
+  stop becoming separate functions. There are deliberately no dependencies here.
+
+`vercel.json` sets memory and a timeout per function, and excludes the tests from
+the bundle. It does not need `includeFiles`: Python functions bundle every project
+file reachable at build time, so `promptlayer/` ships with them automatically.
 
 Compile stays dry-run-only unless you set **all three** of
 `ALLOW_REMOTE_COMPILE=1`, `COMPILE_GATEWAY_URL`, `COMPILE_API_KEY`. That opt-in is
