@@ -1,0 +1,511 @@
+{
+  "version": "2026-10-16",
+  "source": {
+    "repo": "huggingface/hub-docs",
+    "path": "docs/hub/models-widgets-examples.md",
+    "raw_url": "https://raw.githubusercontent.com/huggingface/hub-docs/main/docs/hub/models-widgets-examples.md",
+    "blob_url": "https://github.com/huggingface/hub-docs/blob/main/docs/hub/models-widgets-examples.md",
+    "docs": "huggingface.co/docs/hub/models-widgets-examples",
+    "what": "The example inputs Hugging Face documents for each widget type — what a model card's `widget:` block renders on the model page. Covers the vision and video types the runtime defaults leave out."
+  },
+  "counts": {
+    "types": 28,
+    "examples": 50,
+    "by_section": {
+      "Natural Language Processing": 13,
+      "Audio": 5,
+      "Computer Vision": 9,
+      "Other": 1
+    }
+  },
+  "sections": {
+    "Natural Language Processing": [
+      "Fill-Mask",
+      "Question Answering",
+      "Summarization",
+      "Table Question Answering",
+      "Text Classification",
+      "Text Generation",
+      "Text2Text Generation",
+      "Token Classification",
+      "Translation",
+      "Zero-Shot Classification",
+      "Sentence Similarity",
+      "Conversational",
+      "Feature Extraction"
+    ],
+    "Audio": [
+      "Text-to-Speech",
+      "Automatic Speech Recognition",
+      "Audio-to-Audio",
+      "Audio Classification",
+      "Voice Activity Detection"
+    ],
+    "Computer Vision": [
+      "Image Classification",
+      "Object Detection",
+      "Image Segmentation",
+      "Image-to-Image",
+      "Image-to-Video",
+      "Text-to-Image",
+      "Document Question Answering",
+      "Visual Question Answering",
+      "Zero-Shot Image Classification"
+    ],
+    "Other": [
+      "Structured Data Classification"
+    ]
+  },
+  "types": [
+    {
+      "type": "Fill-Mask",
+      "task": "fill-mask",
+      "section": "Natural Language Processing",
+      "examples": [
+        {
+          "text": "Paris is the <mask> of France.",
+          "example_title": "Capital"
+        },
+        {
+          "text": "The goal of life is <mask>.",
+          "example_title": "Philosophy"
+        }
+      ],
+      "yaml": "widget:\n- text: \"Paris is the <mask> of France.\"\n  example_title: \"Capital\"\n- text: \"The goal of life is <mask>.\"\n  example_title: \"Philosophy\""
+    },
+    {
+      "type": "Question Answering",
+      "task": "question-answering",
+      "section": "Natural Language Processing",
+      "examples": [
+        {
+          "text": "What's my name?",
+          "context": "My name is Clara and I live in Berkeley.",
+          "example_title": "Name"
+        },
+        {
+          "text": "Where do I live?",
+          "context": "My name is Sarah and I live in London",
+          "example_title": "Location"
+        }
+      ],
+      "yaml": "widget:\n- text: \"What's my name?\"\n  context: \"My name is Clara and I live in Berkeley.\"\n  example_title: \"Name\"\n- text: \"Where do I live?\"\n  context: \"My name is Sarah and I live in London\"\n  example_title: \"Location\""
+    },
+    {
+      "type": "Summarization",
+      "task": "summarization",
+      "section": "Natural Language Processing",
+      "examples": [
+        {
+          "text": "The tower is 324 metres (1,063 ft) tall, about the same height as an 81-storey building, and the tallest structure in Paris. Its base is square, measuring 125 metres (410 ft) on each side. During its construction, the Eiffel Tower surpassed the Washington Monument to become the tallest man-made structure in the world, a title it held for 41 years until the Chrysler Building in New York City was finished in 1930. It was the first structure to reach a height of 300 metres. Due to the addition of a broadcasting aerial at the top of the tower in 1957, it is now taller than the Chrysler Building by 5.2 metres (17 ft). Excluding transmitters, the Eiffel Tower is the second tallest free-standing structure in France after the Millau Viaduct.",
+          "example_title": "Eiffel Tower"
+        },
+        {
+          "text": "Laika, a dog that was the first living creature to be launched into Earth orbit, on board the Soviet artificial satellite Sputnik 2, on November 3, 1957. It was always understood that Laika would not survive the mission, but her actual fate was misrepresented for decades. Laika was a small (13 pounds [6 kg]), even-tempered, mixed-breed dog about two years of age. She was one of a number of stray dogs that were taken into the Soviet spaceflight program after being rescued from the streets. Only female dogs were used because they were considered to be anatomically better suited than males for close confinement.",
+          "example_title": "First in Space"
+        }
+      ],
+      "yaml": "widget:\n- text: \"The tower is 324 metres (1,063 ft) tall, about the same height as an 81-storey building, and the tallest structure in Paris. Its base is square, measuring 125 metres (410 ft) on each side. During its construction, the Eiffel Tower surpassed the Washington Monument to become the tallest man-made structure in the world, a title it held for 41 years until the Chrysler Building in New York City was finished in 1930. It was the first structure to reach a height of 300 metres. Due to the addition of a broadcasting aerial at the top of the tower in 1957, it is now taller than the Chrysler Building by 5.2 metres (17 ft). Excluding transmitters, the Eiffel Tower is the second tallest free-standing structure in France after the Millau Viaduct.\"\n  example_title: \"Eiffel Tower\"\n- text: \"Laika, a dog that was the first living creature to be launched into Earth orbit, on board the Soviet artificial satellite Sputnik 2, on November 3, 1957. It was always understood that Laika would not survive the mission, but her actual fate was misrepresented for decades. Laika was a small (13 pounds [6 kg]), even-tempered, mixed-breed dog about two years of age. She was one of a number of stray dogs that were taken into the Soviet spaceflight program after being rescued from the streets. Only female dogs were used because they were considered to be anatomically better suited than males for close confinement.\"\n  example_title: \"First in Space\""
+    },
+    {
+      "type": "Table Question Answering",
+      "task": "table-question-answering",
+      "section": "Natural Language Processing",
+      "examples": [
+        {
+          "text": "How many stars does the transformers repository have?",
+          "table": null,
+          "Repository": null,
+          "Stars": null,
+          "Contributors": null,
+          "example_title": "Github stars",
+          "nested": true
+        }
+      ],
+      "yaml": "widget:\n- text: \"How many stars does the transformers repository have?\"\n  table:\n    Repository:\n      - \"Transformers\"\n      - \"Datasets\"\n      - \"Tokenizers\"\n    Stars:\n      - 36542\n      - 4512\n      - 3934\n    Contributors:\n      - 651\n      - 77\n      - 34\n    Programming language:\n      - \"Python\"\n      - \"Python\"\n      - \"Rust, Python and NodeJS\"\n  example_title: \"Github stars\""
+    },
+    {
+      "type": "Text Classification",
+      "task": "text-classification",
+      "section": "Natural Language Processing",
+      "examples": [
+        {
+          "text": "I love football so much",
+          "example_title": "Positive"
+        },
+        {
+          "text": "I don't really like this type of food",
+          "example_title": "Negative"
+        }
+      ],
+      "yaml": "widget:\n- text: \"I love football so much\"\n  example_title: \"Positive\"\n- text: \"I don't really like this type of food\"\n  example_title: \"Negative\""
+    },
+    {
+      "type": "Text Generation",
+      "task": "text-generation",
+      "section": "Natural Language Processing",
+      "examples": [
+        {
+          "text": "My name is Julien and I like to",
+          "example_title": "Julien"
+        },
+        {
+          "text": "My name is Merve and my favorite",
+          "example_title": "Merve"
+        }
+      ],
+      "yaml": "widget:\n- text: \"My name is Julien and I like to\"\n  example_title: \"Julien\"\n- text: \"My name is Merve and my favorite\"\n  example_title: \"Merve\""
+    },
+    {
+      "type": "Text2Text Generation",
+      "task": "text2text-generation",
+      "section": "Natural Language Processing",
+      "examples": [
+        {
+          "text": "My name is Julien and I like to",
+          "example_title": "Julien"
+        },
+        {
+          "text": "My name is Merve and my favorite",
+          "example_title": "Merve"
+        }
+      ],
+      "yaml": "widget:\n- text: \"My name is Julien and I like to\"\n  example_title: \"Julien\"\n- text: \"My name is Merve and my favorite\"\n  example_title: \"Merve\""
+    },
+    {
+      "type": "Token Classification",
+      "task": "token-classification",
+      "section": "Natural Language Processing",
+      "examples": [
+        {
+          "text": "My name is Sylvain and I live in Paris",
+          "example_title": "Parisian"
+        },
+        {
+          "text": "My name is Sarah and I live in London",
+          "example_title": "Londoner"
+        }
+      ],
+      "yaml": "widget:\n- text: \"My name is Sylvain and I live in Paris\"\n  example_title: \"Parisian\"\n- text: \"My name is Sarah and I live in London\"\n  example_title: \"Londoner\""
+    },
+    {
+      "type": "Translation",
+      "task": "translation",
+      "section": "Natural Language Processing",
+      "examples": [
+        {
+          "text": "My name is Sylvain and I live in Paris",
+          "example_title": "Parisian"
+        },
+        {
+          "text": "My name is Sarah and I live in London",
+          "example_title": "Londoner"
+        }
+      ],
+      "yaml": "widget:\n- text: \"My name is Sylvain and I live in Paris\"\n  example_title: \"Parisian\"\n- text: \"My name is Sarah and I live in London\"\n  example_title: \"Londoner\""
+    },
+    {
+      "type": "Zero-Shot Classification",
+      "task": "zero-shot-classification",
+      "section": "Natural Language Processing",
+      "examples": [
+        {
+          "text": "I have a problem with my car that needs to be resolved asap!!",
+          "candidate_labels": "urgent, not urgent, phone, tablet, computer",
+          "multi_class": true,
+          "example_title": "Car problem"
+        },
+        {
+          "text": "Last week I upgraded my iOS version and ever since then my phone has been overheating whenever I use your app.",
+          "candidate_labels": "mobile, website, billing, account access",
+          "multi_class": false,
+          "example_title": "Phone issue"
+        }
+      ],
+      "yaml": "widget:\n- text: \"I have a problem with my car that needs to be resolved asap!!\"\n  candidate_labels: \"urgent, not urgent, phone, tablet, computer\"\n  multi_class: true\n  example_title: \"Car problem\"\n- text: \"Last week I upgraded my iOS version and ever since then my phone has been overheating whenever I use your app.\"\n  candidate_labels: \"mobile, website, billing, account access\"\n  multi_class: false\n  example_title: \"Phone issue\""
+    },
+    {
+      "type": "Sentence Similarity",
+      "task": "sentence-similarity",
+      "section": "Natural Language Processing",
+      "examples": [
+        {
+          "source_sentence": "That is a happy person",
+          "sentences": null,
+          "example_title": "Happy",
+          "nested": true
+        }
+      ],
+      "yaml": "widget:\n- source_sentence: \"That is a happy person\"\n  sentences:\n    - \"That is a happy dog\"\n    - \"That is a very happy person\"\n    - \"Today is a sunny day\"\n  example_title: \"Happy\""
+    },
+    {
+      "type": "Conversational",
+      "task": "conversational",
+      "section": "Natural Language Processing",
+      "examples": [
+        {
+          "text": "Hey my name is Julien! How are you?",
+          "example_title": "Julien"
+        },
+        {
+          "text": "Hey my name is Clara! How are you?",
+          "example_title": "Clara"
+        }
+      ],
+      "yaml": "widget:\n- text: \"Hey my name is Julien! How are you?\"\n  example_title: \"Julien\"\n- text: \"Hey my name is Clara! How are you?\"\n  example_title: \"Clara\""
+    },
+    {
+      "type": "Feature Extraction",
+      "task": "feature-extraction",
+      "section": "Natural Language Processing",
+      "examples": [
+        {
+          "text": "My name is Sylvain and I live in Paris",
+          "example_title": "Parisian"
+        },
+        {
+          "text": "My name is Sarah and I live in London",
+          "example_title": "Londoner"
+        }
+      ],
+      "yaml": "widget:\n- text: \"My name is Sylvain and I live in Paris\"\n  example_title: \"Parisian\"\n- text: \"My name is Sarah and I live in London\"\n  example_title: \"Londoner\""
+    },
+    {
+      "type": "Text-to-Speech",
+      "task": "text-to-speech",
+      "section": "Audio",
+      "examples": [
+        {
+          "text": "My name is Sylvain and I live in Paris",
+          "example_title": "Parisian"
+        },
+        {
+          "text": "My name is Sarah and I live in London",
+          "example_title": "Londoner"
+        }
+      ],
+      "yaml": "widget:\n- text: \"My name is Sylvain and I live in Paris\"\n  example_title: \"Parisian\"\n- text: \"My name is Sarah and I live in London\"\n  example_title: \"Londoner\""
+    },
+    {
+      "type": "Automatic Speech Recognition",
+      "task": "automatic-speech-recognition",
+      "section": "Audio",
+      "examples": [
+        {
+          "src": "https://cdn-media.huggingface.co/speech_samples/sample1.flac",
+          "example_title": "Librispeech sample 1"
+        },
+        {
+          "src": "https://cdn-media.huggingface.co/speech_samples/sample2.flac",
+          "example_title": "Librispeech sample 2"
+        }
+      ],
+      "yaml": "widget:\n- src: https://cdn-media.huggingface.co/speech_samples/sample1.flac\n  example_title: Librispeech sample 1\n- src: https://cdn-media.huggingface.co/speech_samples/sample2.flac\n  example_title: Librispeech sample 2"
+    },
+    {
+      "type": "Audio-to-Audio",
+      "task": "audio-to-audio",
+      "section": "Audio",
+      "examples": [
+        {
+          "src": "https://cdn-media.huggingface.co/speech_samples/sample1.flac",
+          "example_title": "Librispeech sample 1"
+        },
+        {
+          "src": "https://cdn-media.huggingface.co/speech_samples/sample2.flac",
+          "example_title": "Librispeech sample 2"
+        }
+      ],
+      "yaml": "widget:\n- src: https://cdn-media.huggingface.co/speech_samples/sample1.flac\n  example_title: Librispeech sample 1\n- src: https://cdn-media.huggingface.co/speech_samples/sample2.flac\n  example_title: Librispeech sample 2"
+    },
+    {
+      "type": "Audio Classification",
+      "task": "audio-classification",
+      "section": "Audio",
+      "examples": [
+        {
+          "src": "https://cdn-media.huggingface.co/speech_samples/sample1.flac",
+          "example_title": "Librispeech sample 1"
+        },
+        {
+          "src": "https://cdn-media.huggingface.co/speech_samples/sample2.flac",
+          "example_title": "Librispeech sample 2"
+        }
+      ],
+      "yaml": "widget:\n- src: https://cdn-media.huggingface.co/speech_samples/sample1.flac\n  example_title: Librispeech sample 1\n- src: https://cdn-media.huggingface.co/speech_samples/sample2.flac\n  example_title: Librispeech sample 2"
+    },
+    {
+      "type": "Voice Activity Detection",
+      "task": "voice-activity-detection",
+      "section": "Audio",
+      "examples": [
+        {
+          "src": "https://cdn-media.huggingface.co/speech_samples/sample1.flac",
+          "example_title": "Librispeech sample 1"
+        },
+        {
+          "src": "https://cdn-media.huggingface.co/speech_samples/sample2.flac",
+          "example_title": "Librispeech sample 2"
+        }
+      ],
+      "yaml": "widget:\n- src: https://cdn-media.huggingface.co/speech_samples/sample1.flac\n  example_title: Librispeech sample 1\n- src: https://cdn-media.huggingface.co/speech_samples/sample2.flac\n  example_title: Librispeech sample 2"
+    },
+    {
+      "type": "Image Classification",
+      "task": "image-classification",
+      "section": "Computer Vision",
+      "examples": [
+        {
+          "src": "https://huggingface.co/datasets/mishig/sample_images/resolve/main/tiger.jpg",
+          "example_title": "Tiger"
+        },
+        {
+          "src": "https://huggingface.co/datasets/mishig/sample_images/resolve/main/teapot.jpg",
+          "example_title": "Teapot"
+        }
+      ],
+      "yaml": "widget:\n- src: https://huggingface.co/datasets/mishig/sample_images/resolve/main/tiger.jpg\n  example_title: Tiger\n- src: https://huggingface.co/datasets/mishig/sample_images/resolve/main/teapot.jpg\n  example_title: Teapot"
+    },
+    {
+      "type": "Object Detection",
+      "task": "object-detection",
+      "section": "Computer Vision",
+      "examples": [
+        {
+          "src": "https://huggingface.co/datasets/mishig/sample_images/resolve/main/football-match.jpg",
+          "example_title": "Football Match"
+        },
+        {
+          "src": "https://huggingface.co/datasets/mishig/sample_images/resolve/main/airport.jpg",
+          "example_title": "Airport"
+        }
+      ],
+      "yaml": "widget:\n- src: https://huggingface.co/datasets/mishig/sample_images/resolve/main/football-match.jpg\n  example_title: Football Match\n- src: https://huggingface.co/datasets/mishig/sample_images/resolve/main/airport.jpg\n  example_title: Airport"
+    },
+    {
+      "type": "Image Segmentation",
+      "task": "image-segmentation",
+      "section": "Computer Vision",
+      "examples": [
+        {
+          "src": "https://huggingface.co/datasets/mishig/sample_images/resolve/main/football-match.jpg",
+          "example_title": "Football Match"
+        },
+        {
+          "src": "https://huggingface.co/datasets/mishig/sample_images/resolve/main/airport.jpg",
+          "example_title": "Airport"
+        }
+      ],
+      "yaml": "widget:\n- src: https://huggingface.co/datasets/mishig/sample_images/resolve/main/football-match.jpg\n  example_title: Football Match\n- src: https://huggingface.co/datasets/mishig/sample_images/resolve/main/airport.jpg\n  example_title: Airport"
+    },
+    {
+      "type": "Image-to-Image",
+      "task": "image-to-image",
+      "section": "Computer Vision",
+      "examples": [
+        {
+          "src": "https://huggingface.co/datasets/mishig/sample_images/resolve/main/canny-edge.jpg",
+          "prompt": "Girl with Pearl Earring"
+        }
+      ],
+      "yaml": "widget:\n- src: https://huggingface.co/datasets/mishig/sample_images/resolve/main/canny-edge.jpg\n  prompt: Girl with Pearl Earring # `prompt` field is optional in case the underlying model supports text guidance"
+    },
+    {
+      "type": "Image-to-Video",
+      "task": "image-to-video",
+      "section": "Computer Vision",
+      "examples": [
+        {
+          "src": "https://huggingface.co/datasets/mishig/sample_images/resolve/main/canny-edge.jpg",
+          "prompt": "Girl with Pearl Earring"
+        }
+      ],
+      "yaml": "widget:\n- src: https://huggingface.co/datasets/mishig/sample_images/resolve/main/canny-edge.jpg\n  prompt: Girl with Pearl Earring # `prompt` field is optional in case the underlying model supports text guidance"
+    },
+    {
+      "type": "Text-to-Image",
+      "task": "text-to-image",
+      "section": "Computer Vision",
+      "examples": [
+        {
+          "text": "A cat playing with a ball",
+          "example_title": "Cat"
+        },
+        {
+          "text": "A dog jumping over a fence",
+          "example_title": "Dog"
+        }
+      ],
+      "yaml": "widget:\n- text: \"A cat playing with a ball\"\n  example_title: \"Cat\"\n- text: \"A dog jumping over a fence\"\n  example_title: \"Dog\""
+    },
+    {
+      "type": "Document Question Answering",
+      "task": "document-question-answering",
+      "section": "Computer Vision",
+      "examples": [
+        {
+          "text": "What is the invoice number?",
+          "src": "https://huggingface.co/spaces/impira/docquery/resolve/2359223c1837a7587402bda0f2643382a6eefeab/invoice.png"
+        },
+        {
+          "text": "What is the purchase amount?",
+          "src": "https://huggingface.co/spaces/impira/docquery/resolve/2359223c1837a7587402bda0f2643382a6eefeab/contract.jpeg"
+        }
+      ],
+      "yaml": "widget:\n- text: \"What is the invoice number?\"\n  src: \"https://huggingface.co/spaces/impira/docquery/resolve/2359223c1837a7587402bda0f2643382a6eefeab/invoice.png\"\n- text: \"What is the purchase amount?\"\n  src: \"https://huggingface.co/spaces/impira/docquery/resolve/2359223c1837a7587402bda0f2643382a6eefeab/contract.jpeg\""
+    },
+    {
+      "type": "Visual Question Answering",
+      "task": "visual-question-answering",
+      "section": "Computer Vision",
+      "examples": [
+        {
+          "text": "What animal is it?",
+          "src": "https://huggingface.co/datasets/mishig/sample_images/resolve/main/tiger.jpg"
+        },
+        {
+          "text": "Where is it?",
+          "src": "https://huggingface.co/datasets/mishig/sample_images/resolve/main/palace.jpg"
+        }
+      ],
+      "yaml": "widget:\n- text: \"What animal is it?\"\n  src: \"https://huggingface.co/datasets/mishig/sample_images/resolve/main/tiger.jpg\"\n- text: \"Where is it?\"\n  src: \"https://huggingface.co/datasets/mishig/sample_images/resolve/main/palace.jpg\""
+    },
+    {
+      "type": "Zero-Shot Image Classification",
+      "task": "zero-shot-image-classification",
+      "section": "Computer Vision",
+      "examples": [
+        {
+          "src": "https://huggingface.co/datasets/mishig/sample_images/resolve/main/cat-dog-music.png",
+          "candidate_labels": "playing music, playing sports",
+          "example_title": "Cat & Dog"
+        }
+      ],
+      "yaml": "widget:\n- src: https://huggingface.co/datasets/mishig/sample_images/resolve/main/cat-dog-music.png\n  candidate_labels: playing music, playing sports\n  example_title: Cat & Dog"
+    },
+    {
+      "type": "Structured Data Classification",
+      "task": "structured-data-classification",
+      "section": "Other",
+      "examples": [
+        {
+          "structured_data": null,
+          "fixed_acidity": null,
+          "volatile_acidity": null,
+          "citric_acid": null,
+          "residual_sugar": null,
+          "chlorides": null,
+          "free_sulfur_dioxide": null,
+          "total_sulfur_dioxide": null,
+          "density": null,
+          "pH": null,
+          "sulphates": null,
+          "alcohol": null,
+          "example_title": "Wine",
+          "nested": true
+        }
+      ],
+      "yaml": "widget:\n- structured_data:\n    fixed_acidity:\n      - 7.4\n      - 7.8\n      - 10.3\n    volatile_acidity:\n      - 0.7\n      - 0.88\n      - 0.32\n    citric_acid:\n      - 0\n      - 0\n      - 0.45\n    residual_sugar:\n      - 1.9\n      - 2.6\n      - 6.4\n    chlorides:\n      - 0.076\n      - 0.098\n      - 0.073\n    free_sulfur_dioxide:\n      - 11\n      - 25\n      - 5\n    total_sulfur_dioxide:\n      - 34\n      - 67\n      - 13\n    density:\n      - 0.9978\n      - 0.9968\n      - 0.9976\n    pH:\n      - 3.51\n      - 3.2\n      - 3.23\n    sulphates:\n      - 0.56\n      - 0.68\n      - 0.82\n    alcohol:\n      - 9.4\n      - 9.8\n      - 12.6\n  example_title: \"Wine\""
+    }
+  ]
+}

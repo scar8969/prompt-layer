@@ -70,6 +70,38 @@ The reasoning behind the checks, in the order they matter, is written up in
 [docs/improving-outputs.md](docs/improving-outputs.md) — the six levers, each with a
 before/after and the guide it comes from.
 
+## Presets — Hugging Face's own
+
+Prompting is easier with an example in front of you, so the Improve tab carries the
+presets **Hugging Face itself uses**, and none of them are written here:
+
+| collection | what it is | size | source |
+|---|---|---|---|
+| **Hub defaults** | the example inputs the Hub shows in a model widget's examples dropdown when the card defines none | **201 presets, 14 languages** | `huggingface/huggingface.js` → `packages/tasks/src/default-widget-inputs.ts` |
+| **Documented widget examples** | the example inputs HF documents for every widget type | **28 types, 50 examples** | `huggingface/hub-docs` → `docs/hub/models-widgets-examples.md` |
+| **A model's own card** | the `widget:` metadata of one model — what *its* page shows | per model, read live | `huggingface.co/api/models/<id>` |
+
+Both files are vendored under `promptlayer/vendor/` and parsed by
+`scripts/build_hf_presets.py` and `scripts/build_hf_widget_examples.py`. The
+committed JSON is not hand-written: a test re-parses the vendored source on every
+run and fails if the two have drifted apart.
+
+![Prompt Layer — the Hugging Face presets panel: collection, language and task
+filters, the source line, and the preset list](docs/screenshot-presets.png)
+
+Two findings worth knowing, both encoded as tests:
+
+- **HF's runtime defaults are text-only.** All 201 ship for NLP tasks; there is no
+  `text-to-image` or `image-to-video` default anywhere in that file. That is why the
+  second collection exists — the vision and video examples live in the widget docs.
+- **A card can carry its own.** `openai/clip-vit-base-patch32` defines one widget
+  example; `Wan-AI/Wan2.2-T2V-A14B` defines none, and the tool says exactly that
+  rather than showing something it made up.
+
+Only the per-model read touches the network, only when you type a model id, and it
+is one public document — nothing about your prompt or your machine is sent. Offline,
+it reports the failure and the local collections still work.
+
 **Compile** — run an **open-source** prompt expander over your idea, using the
 verbatim system prompts shipped by the model owners:
 
@@ -100,8 +132,9 @@ and spends nothing.
 | method | path | purpose |
 |---|---|---|
 | `GET` | `/api/health` | liveness + dataset size |
-| `GET` | `/api/models` | models, expanders, dataset version, improve vocabulary |
+| `GET` | `/api/models` | models, expanders, dataset version, improve vocabulary, preset counts |
 | `GET` | `/api/models?slug=` | one model: layers, params, sources, image support |
+| `GET` | `/api/presets` | Hugging Face presets: `?lang=&task=&limit=`, `?collection=widget-examples&section=&task=`, `?model=<hf id>` |
 | `POST` | `/api/preflight` | `{model, prompt, options?, system_message?, image_count?}` |
 | `POST` | `/api/improve` | `{model, prompt, selections?, palette?, template?, clean?, image?}` |
 | `POST` | `/api/compile` | `{prompt, style, model?, dry_run?}` |
@@ -118,11 +151,20 @@ curl -s -X POST localhost:8090/api/improve -H 'Content-Type: application/json' \
   | jq '.data.before.score, .data.after.score, .data.cleaned.changes[].removed'
 ```
 
+```bash
+curl -s 'localhost:8090/api/presets?collection=widget-examples&section=Computer%20Vision' \
+  | jq '.data.types, .data.presets[4].examples'
+```
+
+```bash
+curl -s 'localhost:8090/api/presets?lang=en&task=fill-mask' | jq '.data.presets[].text'
+```
+
 ## Run it
 
 ```bash
 python dev.py          # http://127.0.0.1:8090   (emulates the Vercel layout)
-python -m pytest -q    # 60 tests
+python -m pytest -q    # 83 tests
 ```
 
 No dependencies — the service, the dataset and the functions are all standard
@@ -132,8 +174,8 @@ library.
 
 1. Import this repo at [vercel.com/new](https://vercel.com/new).
 2. Framework preset **Other**. No build command, no output directory.
-3. Deploy. `/` serves the UI; the four files in `api/` answer at `/api/health`,
-   `/api/models`, `/api/preflight`, `/api/compile`.
+3. Deploy. `/` serves the UI; the six files in `api/` answer at `/api/health`,
+   `/api/models`, `/api/presets`, `/api/preflight`, `/api/improve`, `/api/compile`.
 
 Two things about how Vercel treats this layout, both checked against their docs:
 
@@ -159,6 +201,7 @@ spend it, so a key alone is never enough.
 index.html            the app (no build step, no framework)
 api/health.py         \  Vercel Python functions — each exports `handler`
 api/models.py          |
+api/presets.py         |
 api/preflight.py       |
 api/improve.py         |
 api/compile.py        /
@@ -167,9 +210,14 @@ promptlayer/
   layers.json         the dataset: every fact + its source and evidence
   improve.py          the lint, the deterministic cleanup, the design merge
   design.json         the improve vocabulary: 11 groups, each item sourced
+  presets.py          Hugging Face preset loaders + the one live card read
+  hf-presets.json     parsed Hub defaults (201 presets, 14 languages)
+  hf-widget-examples.json  parsed widget examples (28 types)
+  vendor/             the upstream files, verbatim, so the parse can be re-checked
   http.py             shared request/response helpers
+scripts/              the two parsers that generate the preset datasets
 dev.py                local emulation of the Vercel layout
-tests/                60 tests: dataset, assembly, improvement, and the deployed entry points
+tests/                83 tests: datasets, assembly, improvement, and the deployed entry points
 ```
 
 Adding a model is one entry in `promptlayer/layers.json`; adding a lint rule or a
@@ -182,6 +230,12 @@ this tool is that every claim can be checked.
 - Provider defaults drift. `layers.json` and `design.json` are versioned and
   surfaced in the footer; refreshing them means re-reading the specs and bumping
   `version`.
+- The preset datasets are generated, never typed. If upstream changes the shape of
+  `default-widget-inputs.ts` or the widget docs, the fidelity test fails loudly
+  instead of the tool serving a stale list.
+- The widget docs describe the *shape* of a card's examples. Where a field is nested
+  (`sentences:`, `structured_data:`) the entry is flagged `nested` and the verbatim
+  block is kept, rather than flattening it into something the doc does not say.
 - Where a provider's behaviour is undocumented, the entry is omitted rather than
   filled in — an empty answer beats a confident wrong one.
 - The lint is a checklist, not a critic. It has no model behind it and no opinion

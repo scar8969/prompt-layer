@@ -28,6 +28,19 @@ from .improve import (  # noqa: F401
     reload_design,
     vocab,
 )
+from .presets import (  # noqa: F401
+    hf_model_presets,
+    hf_presets,
+    preset_index,
+    preset_languages,
+    preset_source,
+    preset_tasks,
+    reload_presets,
+    widget_example_sections,
+    widget_example_slugs,
+    widget_example_types,
+    widget_examples,
+)
 
 __all__ = [
     "apply_design",
@@ -39,11 +52,22 @@ __all__ = [
     "dataset_version",
     "design_version",
     "expander_styles",
+    "hf_model_presets",
+    "hf_presets",
     "lint_prompt",
     "load_design",
     "model_detail",
     "model_list",
+    "preset_index",
+    "preset_languages",
+    "preset_source",
+    "preset_tasks",
     "reload_design",
     "reload_layers",
+    "reload_presets",
     "vocab",
+    "widget_example_sections",
+    "widget_example_slugs",
+    "widget_example_types",
+    "widget_examples",
 ]

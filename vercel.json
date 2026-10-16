@@ -6,12 +6,12 @@
     "api/*.py": {
       "memory": 512,
       "maxDuration": 15,
-      "excludeFiles": "{tests/**,**/__pycache__/**,**/test_*.py,requirements-dev.txt,dev.py}"
+      "excludeFiles": "{tests/**,scripts/**,promptlayer/vendor/**,docs/**,**/__pycache__/**,**/test_*.py,requirements-dev.txt,dev.py}"
     },
     "api/compile.py": {
       "memory": 512,
       "maxDuration": 60,
-      "excludeFiles": "{tests/**,**/__pycache__/**,**/test_*.py,requirements-dev.txt,dev.py}"
+      "excludeFiles": "{tests/**,scripts/**,promptlayer/vendor/**,docs/**,**/__pycache__/**,**/test_*.py,requirements-dev.txt,dev.py}"
     }
   },
   "headers": [

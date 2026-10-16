@@ -34,7 +34,7 @@ def _load_function(name: str):
     return module.handler
 
 
-@pytest.fixture(scope="module", params=["health", "models", "preflight", "improve", "compile"])
+@pytest.fixture(scope="module", params=["health", "models", "preflight", "improve", "compile", "presets"])
 def function_server(request):
     """One server per function, mounted at the path Vercel would use."""
     handler = _load_function(request.param)

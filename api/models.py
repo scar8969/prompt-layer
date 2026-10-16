@@ -12,7 +12,15 @@ from urllib.parse import parse_qs, urlparse
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from promptlayer import dataset_version, design_version, expander_styles, load_design, model_detail, model_list  # noqa: E402
+from promptlayer import (  # noqa: E402
+    dataset_version,
+    design_version,
+    expander_styles,
+    load_design,
+    model_detail,
+    model_list,
+    preset_index,
+)
 from promptlayer.http import send_error_json, send_json  # noqa: E402
 
 
@@ -38,6 +46,8 @@ class handler(BaseHTTPRequestHandler):
                 "templates": load_design()["templates"],
                 "sources": load_design()["sources"],
             },
+            # Hugging Face's own widget presets: counts + where they came from.
+            "presets": preset_index(),
         })
 
     def do_OPTIONS(self) -> None:  # noqa: N802
