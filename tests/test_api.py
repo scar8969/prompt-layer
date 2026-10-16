@@ -13,6 +13,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import re
 import sys
 import threading
 import urllib.error
@@ -49,6 +50,47 @@ def function_server(request):
 def _get(base: str, path: str = "/"):
     with urllib.request.urlopen(base + path, timeout=15) as resp:
         return resp.status, json.loads(resp.read().decode())
+
+
+def test_every_function_in_api_exports_a_handler_and_nothing_is_a_dependency():
+    """The deployment shape, asserted.
+
+    Vercel turns each file in /api into its own function, and a detected Python
+    framework preset would stop that. So every file here exports a
+    BaseHTTPRequestHandler subclass, and nothing in the repo imports anything
+    outside the standard library.
+    """
+    from http.server import BaseHTTPRequestHandler
+
+    files = sorted(n for n in os.listdir(API_DIR) if n.endswith(".py"))
+    assert files == ["compile.py", "health.py", "improve.py", "models.py", "preflight.py",
+                     "presets.py", "reference.py", "storyboard.py", "video.py"]
+    for name in files:
+        handler = _load_function(name[:-3])
+        assert isinstance(handler, type) and issubclass(handler, BaseHTTPRequestHandler), name
+
+    stdlib = set(sys.stdlib_module_names)
+    offenders = []
+    # Only the shipped code: /api and promptlayer/. The parsers under scripts/
+    # and the tests are dev-only and are excluded from the function bundle, so
+    # PyYAML there is fine — the rule is that what deploys has no dependencies.
+    for folder in (os.path.join(REPO, "api"), os.path.join(REPO, "promptlayer")):
+        for root, dirs, names in os.walk(folder):
+            dirs[:] = [d for d in dirs if d not in (".git", "__pycache__", "vendor")]
+            for name in names:
+                if not name.endswith(".py"):
+                    continue
+                path = os.path.join(root, name)
+                with open(path, encoding="utf-8") as fh:
+                    for line in fh:
+                        match = re.match(r"\s*(?:import|from)\s+([A-Za-z_][\w.]*)", line)
+                        if not match:
+                            continue
+                        top = match.group(1).split(".")[0]
+                        if top in stdlib or top == "promptlayer":
+                            continue
+                        offenders.append(f"{os.path.relpath(path, REPO)}: {line.strip()}")
+    assert offenders == [], offenders
 
 
 def _post(base: str, payload: dict):
