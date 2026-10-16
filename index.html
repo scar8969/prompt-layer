@@ -42,6 +42,14 @@
   .vchip.on { background:#000; color:#fff; border-color:#000; }
   .preset { display:block; width:100%; text-align:left; border:1px solid #0000001f; border-radius:6px; background:#fff; padding:6px 8px; }
   .preset:hover { border-color:#00000059; background:#fafafa; }
+  .mpset { display:inline-flex; align-items:stretch; border:1px solid #0000001f; border-radius:999px; background:#fff; overflow:hidden; }
+  .mpset button { font-size:11.5px; padding:3px 9px; color:#4c4546; }
+  .mpset button:hover { background:#f3f4f5; }
+  .mpset .x { border-left:1px solid #0000001f; color:#9a9394; padding:3px 7px; }
+  .mpset.on { background:#000; border-color:#000; }
+  .mpset.on button, .mpset.on .x { color:#fff; }
+  .mpset.on button:hover { background:#1c1c1c; }
+  .mpset.stale button { color:#8A5A00; }
 </style>
 </head>
 <body class="text-on-surface">
@@ -65,6 +73,19 @@
     <button class="tabbtn text-sm font-medium px-3.5 py-2 rounded-card border border-black/10" data-tab="improve">Improve</button>
     <button class="tabbtn text-sm font-medium px-3.5 py-2 rounded-card border border-black/10" data-tab="video">Video</button>
     <button class="tabbtn text-sm font-medium px-3.5 py-2 rounded-card border border-black/10" data-tab="compile">Compile</button>
+  </div>
+
+  <!-- ======================= MODEL SETS (all tabs) ====================== -->
+  <div id="mpBar" class="hidden mb-4 bg-white border border-black/10 rounded-card px-4 py-3">
+    <div class="flex flex-wrap items-center gap-x-2 gap-y-2">
+      <span class="text-[11px] font-semibold uppercase tracking-wider text-[#77717A]">Model sets</span>
+      <div id="mpChips" class="flex flex-wrap items-center gap-1.5"></div>
+      <div class="flex items-center gap-1.5 ml-auto">
+        <input id="mpName" maxlength="40" class="text-xs rounded border-black/15 mono w-44" placeholder="name this set">
+        <button id="mpSave" class="text-xs font-medium border border-black/10 px-2.5 py-1.5 rounded-card hover:border-black/30">Save current</button>
+      </div>
+    </div>
+    <div id="mpNote" class="text-[11px] text-[#77717A] mt-2"></div>
   </div>
 
   <!-- ============================ PREFLIGHT ============================ -->
@@ -423,6 +444,12 @@
     $('style').innerHTML = styles.map(s => `<option value="${s.id}">${s.label}</option>`).join('');
     $('styleNote').textContent = styles[0] ? ('origin: ' + styles[0].origin) : '';
     await onModel();
+    // The model sets are per-browser, so they can only be drawn once the
+    // pickers have their options. Restore whichever one you last switched to.
+    $('mpBar').classList.remove('hidden');
+    modelSets = readSets();
+    renderSets();
+    await restoreLastSet();
   }
 
   async function onModel() {
@@ -1251,7 +1278,7 @@
   });
 
   $('prompt').addEventListener('input', () => $('pcount').textContent = $('prompt').value.length);
-  $('model').addEventListener('change', onModel);
+  $('model').addEventListener('change', async () => { await onModel(); renderSets(); });
   $('runPreflight').addEventListener('click', preflight);
   $('fullControl').addEventListener('click', applyFullControl);
   $('runCompile').addEventListener('click', compile);
@@ -1277,6 +1304,7 @@
     if (!$('vChatBox').classList.contains('hidden')) readConcept();
     // A different endpoint documents different image rules, so re-check the set.
     if (refImages.length) await checkReferences();
+    renderSets();
   });
   $('vImages').addEventListener('change', (e) => addImages(Array.from(e.target.files || [])));
   $('vCopyAll').addEventListener('click', () => {
@@ -1286,6 +1314,151 @@
   $('vCopyPlan').addEventListener('click', () => navigator.clipboard.writeText($('vJobs').textContent));
   $('vConcept').addEventListener('keydown', e => {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) readConcept();
+  });
+
+  // ------------------------------ model sets ------------------------------
+  // A model set is the two pickers remembered under a name: which endpoint
+  // Preflight/Improve asks about, and which endpoint Video builds requests for.
+  // It lives in this browser (localStorage) and is never uploaded — the server
+  // has no idea it exists.
+  //
+  // Switching a set changes only the endpoints. Whatever you have written stays
+  // written, and every panel that depends on the endpoint is re-read exactly the
+  // way it is when you move the picker by hand.
+  const SETS_KEY = 'promptlayer.model-sets.v1';
+  let modelSets = [];
+
+  function readSets() {
+    let raw = null;
+    try { raw = JSON.parse(localStorage.getItem(SETS_KEY) || 'null'); } catch (e) { raw = null; }
+    const list = raw && Array.isArray(raw.sets) ? raw.sets : [];
+    return list.filter(s => s && typeof s.name === 'string' && s.name.trim()
+        && s.models && typeof s.models === 'object')
+      .map(s => ({
+        name: s.name.trim().slice(0, 40),
+        models: {
+          preflight: typeof s.models.preflight === 'string' ? s.models.preflight : '',
+          video: typeof s.models.video === 'string' ? s.models.video : '',
+        },
+      }))
+      .filter((s, i, all) => all.findIndex(x => x.name.toLowerCase() === s.name.toLowerCase()) === i);
+  }
+
+  function writeSets(sets) {
+    modelSets = sets;
+    try { localStorage.setItem(SETS_KEY, JSON.stringify({ version: 1, sets })); } catch (e) { /* private mode */ }
+  }
+
+  function currentSet() {
+    return { preflight: $('model').value || '', video: $('vModel').value || '' };
+  }
+
+  function sameSet(a, b) { return a.preflight === b.preflight && a.video === b.video; }
+
+  function lastSetName() {
+    try { return localStorage.getItem(SETS_KEY + '.last'); } catch (e) { return null; }
+  }
+
+  function rememberSet(name) {
+    try { localStorage.setItem(SETS_KEY + '.last', name); } catch (e) { /* private mode */ }
+  }
+
+  function modelLabel(slug) {
+    const m = models.find(x => x.slug === slug);
+    return m ? m.display : slug;
+  }
+
+  function renderSets() {
+    const cur = currentSet();
+    const known = new Set(models.map(m => m.slug));
+    // Two sets can describe the same pair of endpoints. Mark the one you last
+    // switched to, so the bar never claims two sets are live at once.
+    const remembered = modelSets.find(s => s.name === lastSetName());
+    const live = (remembered && sameSet(remembered.models, cur))
+      ? remembered.name
+      : (modelSets.find(s => sameSet(s.models, cur)) || {}).name;
+    const chips = modelSets.map(s => {
+      // A set can name an endpoint this dataset no longer documents. Say so on
+      // the chip rather than silently applying a different model.
+      const gone = [s.models.preflight, s.models.video].filter(v => v && !known.has(v));
+      const cls = 'mpset' + (s.name === live ? ' on' : '') + (gone.length ? ' stale' : '');
+      const title = gone.length ? 'names ' + gone.join(' and ') + ', which this dataset does not document' : 'switch to this set';
+      return `<span class="${cls}" title="${esc(title)}">
+        <button data-set="${encodeURIComponent(s.name)}">${esc(s.name)}${gone.length ? ' ⚠' : ''}</button>
+        <button class="x" data-drop="${encodeURIComponent(s.name)}" title="delete this set">×</button></span>`;
+    }).join('');
+    $('mpChips').innerHTML = chips
+      || '<span class="text-[11px] text-[#77717A]">none yet — pick your endpoints, then save them under a name</span>';
+    $('mpNote').textContent = modelSets.length
+      ? 'Stored in this browser only. Switching a set leaves what you have written alone.'
+      : '';
+  }
+
+  async function applySet(set, quiet = false) {
+    const known = new Set(models.map(m => m.slug));
+    const missing = [];
+    for (const [where, slug] of [['preflight', set.models.preflight], ['video', set.models.video]]) {
+      if (!slug) continue;
+      const select = where === 'video' ? $('vModel') : $('model');
+      if (known.has(slug)) select.value = slug;
+      else missing.push(`${where} → ${slug}`);
+    }
+    await onModel();
+    // The same follow-ups the pickers run when moved by hand: a different
+    // endpoint documents different image rules, and a different chat model
+    // means the reading has to be re-asked.
+    if (!$('vChatBox').classList.contains('hidden')) await readConcept();
+    if (refImages.length) await checkReferences();
+    // Remember before drawing: the bar marks the remembered set as live.
+    rememberSet(set.name);
+    renderSets();
+    if (!quiet) {
+      $('mpNote').textContent = missing.length
+        ? `Applied "${set.name}", except ${missing.join(' and ')} — this dataset does not document ${missing.length > 1 ? 'those endpoints' : 'that endpoint'}, so that picker stayed where it was.`
+        : `Applied "${set.name}". ${modelLabel(set.models.preflight)} + ${modelLabel(set.models.video)}.`;
+    }
+  }
+
+  function saveSet(name) {
+    name = (name || '').trim().slice(0, 40);
+    if (!name) { $('mpName').focus(); return; }
+    const cur = currentSet();
+    const at = modelSets.findIndex(s => s.name.toLowerCase() === name.toLowerCase());
+    const replaced = at >= 0;
+    const set = { name: replaced ? modelSets[at].name : name, models: cur };
+    if (replaced) modelSets[at] = set; else modelSets.push(set);
+    writeSets(modelSets);
+    // Saving is also choosing: this is the set you want back on the next visit.
+    rememberSet(set.name);
+    $('mpName').value = '';
+    renderSets();
+    $('mpNote').textContent = `${replaced ? 'Updated' : 'Saved'} "${set.name}" — `
+      + `${modelLabel(cur.preflight)} + ${modelLabel(cur.video)}. Stored in this browser.`;
+  }
+
+  function dropSet(name) {
+    writeSets(modelSets.filter(s => s.name !== name));
+    if (lastSetName() === name) {
+      try { localStorage.removeItem(SETS_KEY + '.last'); } catch (e) { /* private mode */ }
+    }
+    renderSets();
+    $('mpNote').textContent = `Deleted "${name}".`;
+  }
+
+  async function restoreLastSet() {
+    const set = modelSets.find(s => s.name === lastSetName());
+    if (set) await applySet(set, true);
+  }
+
+  $('mpSave').addEventListener('click', () => saveSet($('mpName').value));
+  $('mpName').addEventListener('keydown', e => { if (e.key === 'Enter') saveSet($('mpName').value); });
+  $('mpChips').addEventListener('click', (e) => {
+    const drop = e.target.closest('[data-drop]');
+    if (drop) return dropSet(decodeURIComponent(drop.dataset.drop));
+    const go = e.target.closest('[data-set]');
+    if (!go) return;
+    const set = modelSets.find(s => s.name === decodeURIComponent(go.dataset.set));
+    if (set) applySet(set);
   });
 
   load();

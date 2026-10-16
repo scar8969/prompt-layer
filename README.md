@@ -126,6 +126,25 @@ fix. So this tab is a conversation that ends in a storyboard:
 ![Prompt Layer — the Video tab: the reading of a concept, the questions it asks, two
 scenes with their prompts, and the request each one becomes](docs/screenshot-video.png)
 
+**Model sets** sit above every tab: the pair of endpoints you are working with —
+which one Preflight and Improve ask about, which one Video builds requests for —
+saved under a name and switched with one click.
+
+![Prompt Layer — the model-set bar: two saved sets, the live one filled in, and the
+note saying what was applied](docs/screenshot-model-sets.png)
+
+- They live in **this browser only** (`localStorage`, key `promptlayer.model-sets.v1`).
+  Nothing is uploaded, the server does not know they exist, and there are no accounts.
+- Switching one **changes only the endpoints**. Whatever you have written stays
+  written, and every panel that depends on the endpoint is re-read the same way it is
+  when you move the picker by hand — including re-checking attached images, because a
+  different endpoint documents different image rules.
+- A set that names an endpoint **this dataset no longer documents** is marked `⚠`
+  rather than quietly applied: the picker that cannot be set stays where it is and the
+  note says which one and why.
+- Saving a name you already used **updates that set** instead of adding a duplicate,
+  and the set you last switched to comes back on your next visit.
+
 **Reference images** attach to that storyboard, and they are measured, never
 uploaded: the browser reads dimensions, MIME type, byte size and the dominant
 colours, and sends only those numbers. Attach a 1920×1080 still to `sora-2` and it
@@ -210,7 +229,7 @@ curl -s -X POST localhost:8090/api/video -H 'Content-Type: application/json' \
 
 ```bash
 python dev.py          # http://127.0.0.1:8090   (emulates the Vercel layout)
-python -m pytest -q    # 180 tests
+python -m pytest -q    # 183 tests
 ```
 
 No dependencies — the service, the dataset and the functions are all standard
@@ -276,7 +295,7 @@ promptlayer/
   http.py             shared request/response helpers
 scripts/              the two parsers that generate the preset datasets
 dev.py                local emulation of the Vercel layout
-tests/                180 tests: datasets, assembly, improvement, the planner, the
+tests/                183 tests: datasets, assembly, improvement, the planner, the
                       deployment shape, the deployed entry points
 ```
 
