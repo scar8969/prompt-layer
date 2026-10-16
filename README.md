@@ -2,7 +2,7 @@
 
 **See what a model provider adds to your prompt before you pay for it — then choose.**
 
-Every hosted video and chat endpoint rewrites, expands, screens or pads your
+Every hosted image, video and chat endpoint rewrites, expands, screens or pads your
 prompt before the model runs, and none of it is visible in the UI:
 
 | what happens | where | default |
@@ -12,6 +12,8 @@ prompt before the model runs, and none of it is visible in the UI:
 | A **canned negative prompt is attached** | Kling (`"blur, distort, and low quality"`), Pika (`"ugly, bad, terrible"`), LTX-2 (~200 words) | on |
 | **Screen** before generation | `enable_safety_checker` (Seedance: *"unauthorized requests are always checked"*), `safety_tolerance` | `true` / `"4"` |
 | **Resolution, aspect, duration, audio pinned** | every hosted endpoint | provider's choice |
+| Your prompt is **enhanced with no off-switch** | Seedream 4.0 (`enhance_prompt_mode` chooses how, not whether) | on |
+| Your image count is **overridden** | Nano Banana (`limit_generations`) | `true` |
 
 Prompt Layer shows all of it, per endpoint, **before** you spend anything — and
 gives you the exact parameter to flip if you want your wording back.
@@ -126,9 +128,10 @@ fix. So this tab is a conversation that ends in a storyboard:
 ![Prompt Layer — the Video tab: the reading of a concept, the questions it asks, two
 scenes with their prompts, and the request each one becomes](docs/screenshot-video.png)
 
-**Model sets** sit above every tab: the pair of endpoints you are working with —
-which one Preflight and Improve ask about, which one Video builds requests for —
-saved under a name and switched with one click.
+**Model sets** sit above every tab: the endpoints you are working with — which one
+Preflight and Improve ask about, which one Video builds requests for, and which one
+the conversation in Video is held for — saved under a name and switched with one
+click.
 
 ![Prompt Layer — the model-set bar: two saved sets, the live one filled in, and the
 note saying what was applied](docs/screenshot-model-sets.png)
@@ -144,6 +147,30 @@ note saying what was applied](docs/screenshot-model-sets.png)
   note says which one and why.
 - Saving a name you already used **updates that set** instead of adding a duplicate,
   and the set you last switched to comes back on your next visit.
+- A set saved before the third slot existed still reads: it is taken as the prompt and
+  video endpoints, and the conversation follows the video one, which is what it did.
+
+**The endpoint you are discussing decides the answers.** The Video tab has two
+pickers, because a conversation and a generation can be aimed at different endpoints:
+*discussing for* is the endpoint the chat reads, and *scenes built for* is the endpoint
+the requests are written for. They default to the same one; when they differ, the line
+under them says so rather than letting one stand in for the other.
+
+The discussion picker is not a label — it changes the answers the chat offers, because
+the options come from **the endpoint's own documented parameters**:
+
+| Discussing for | "How long is each clip?" | from |
+| --- | --- | --- |
+| Sora 2 | `4`, `8`, `12`, `16`, `20` | `seconds` |
+| Veo 3 Fast | `8s` | `duration` |
+| Hailuo 02 (i2v) | `6` | `duration` |
+
+Each question says which parameter its values came from, and keeps the published rule
+and quote it rests on — the rule is the guide's, the values are the endpoint's.
+
+![Prompt Layer — the Video tab with two model pickers: discussing for Sora 2 while the
+scenes are built for Hailuo 02, and the shape question offering Sora 2's own documented
+`size` values](docs/screenshot-model-choice.png)
 
 **Reference images** attach to that storyboard, and they are measured, never
 uploaded: the browser reads dimensions, MIME type, byte size and the dominant
@@ -176,6 +203,42 @@ and spends nothing.
 - **Your image never leaves the browser.** Reference-image checks need dimensions
   and MIME type, so the page measures the file locally and sends only those — no
   upload, no storage.
+
+## What you can point it at
+
+The picker is grouped by what the endpoint makes — **20 endpoints: 13 video, 6 image,
+1 chat** — because an image prompt is governed by different rules from a video one.
+
+| kind | endpoints |
+|---|---|
+| image | `flux-2`, `flux-2-pro`, `flux-2-edit`, `seedream-v4`, `qwen-image`, `nano-banana` |
+| video | Veo 3 (+ fast), Sora 2, Hailuo 02, Wan 2.2, Kling, Seedance, LTX-2 and the rest of the 13 |
+| chat | `gpt-4o-mini` |
+
+The image entries were read from each endpoint's own published schema (fal's queue
+OpenAPI), so they carry the same discipline as the rest: the parameters, the defaults
+and the off-switches are the endpoint's, and every layer keeps its source and verbatim
+evidence. A few of them are worth knowing before you pay for a render:
+
+- **Seedream 4.0 enhances your prompt and there is no documented switch to stop it** —
+  `enhance_prompt_mode` chooses *how*, not *whether*. The prompt you write is what you
+  control.
+- **Nano Banana disregards what you say about how many images to make** while
+  `limit_generations` is on, and it is on by default.
+- **FLUX.2 and FLUX.2 Edit leave prompt expansion off** (`enable_prompt_expansion:
+  false`) — so the same prompt can come back different on a deployment that turned it
+  on. That is exactly the difference this tool exists to show you.
+- **A flagged image comes back black, not refused.** A black result is a screening
+  outcome, not a failed request. Two of these endpoints have a six- or five-step
+  tolerance knob rather than a boolean.
+- `flux-2-edit` is the one that takes an image, in `image_urls`, and it **keeps the
+  first four and drops the rest** — so a fifth reference is not an error, it is silence.
+
+The Improve lint is the one place whose sources are video guides, because that is where
+these rules are published — Sora's cookbook and Veo's guide. The advice is generic
+prompt-writing advice (no feeling-words; length and size are parameters, not prose), and
+every finding names its source so you can weigh it, but a `camera_conflict` raised on an
+image prompt is prompt-writing advice, not a published image rule.
 
 ## Endpoints
 
@@ -229,7 +292,7 @@ curl -s -X POST localhost:8090/api/video -H 'Content-Type: application/json' \
 
 ```bash
 python dev.py          # http://127.0.0.1:8090   (emulates the Vercel layout)
-python -m pytest -q    # 183 tests
+python -m pytest -q    # 191 tests
 ```
 
 No dependencies — the service, the dataset and the functions are all standard
@@ -295,7 +358,7 @@ promptlayer/
   http.py             shared request/response helpers
 scripts/              the two parsers that generate the preset datasets
 dev.py                local emulation of the Vercel layout
-tests/                183 tests: datasets, assembly, improvement, the planner, the
+tests/                191 tests: datasets, assembly, improvement, the planner, the
                       deployment shape, the deployed entry points
 ```
 

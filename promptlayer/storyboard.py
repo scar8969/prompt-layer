@@ -240,11 +240,28 @@ def _questions(missing: List[str], model_detail: Optional[Dict[str, Any]]) -> Li
             continue
         options: List[str] = []
         origin = None
-        if facet.get("options_from_params"):
-            key = facet["options_from_params"]
-            options = _param_options(params.get(key) or {})
-            origin = f"{model_detail.get('display') or 'this endpoint'} · parameter '{key}'" if options else None
-        elif facet.get("options_from"):
+        options_from = None
+        # The endpoint you are discussing decides what the answer can be: the
+        # facet names the parameters that carry this facet, in order, and the
+        # first one the endpoint actually documents is the one asked about.
+        keys = facet.get("options_from_params")
+        if isinstance(keys, str):
+            keys = [keys]
+        for key in (keys or []):
+            param = params.get(key)
+            if not isinstance(param, dict):
+                continue
+            options = _param_options(param)
+            if options:
+                display = (model_detail or {}).get("display") or "this endpoint"
+                origin = f"{display} · parameter '{key}'"
+                options_from = {
+                    "endpoint": display,
+                    "parameter": key,
+                    "default": param.get("default"),
+                }
+                break
+        if not options and facet.get("options_from"):
             options = facet["options"]
             origin = facet["source"]
         out.append({
@@ -256,6 +273,7 @@ def _questions(missing: List[str], model_detail: Optional[Dict[str, Any]]) -> Li
             "source": origin or facet["source"],
             "evidence": facet["evidence"],
             "options": options,
+            "options_from": options_from,
             "free": facet["free"],
             "blocking": facet["blocking"],
         })

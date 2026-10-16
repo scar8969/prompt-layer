@@ -1,5 +1,5 @@
 {
-  "version": "2026-10-12",
+  "version": "2026-10-16",
   "note": "Every fact here is copied from a public source (fetched live). Nothing is inferred. Where a value is unknown, the entry says so instead of guessing.",
   "generic_layers": [
     {
@@ -51,6 +51,307 @@
     }
   ],
   "models": {
+    "flux-2": {
+      "provider": "fal",
+      "endpoint": "fal-ai/flux-2",
+      "kind": "image",
+      "display": "FLUX.2 (fal)",
+      "params": {
+        "image_size": { "default": "landscape_4_3" },
+        "num_images": { "default": 1 },
+        "output_format": { "default": "png", "options": ["jpeg", "png", "webp"] },
+        "guidance_scale": { "default": 2.5 },
+        "num_inference_steps": { "default": 28 },
+        "acceleration": { "default": "regular", "options": ["none", "regular", "high"] },
+        "enable_prompt_expansion": { "default": false },
+        "enable_safety_checker": { "default": true }
+      },
+      "layers": [
+        {
+          "id": "expand.prompt_expansion",
+          "kind": "expand",
+          "active": false,
+          "detail": "This endpoint can expand your prompt before generation, but it is off unless you ask for it. Turning it on is enable_prompt_expansion: true — which is exactly why the same prompt can come back different on a deployment that switched it on.",
+          "disable_with": null,
+          "source": "fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/flux-2",
+          "evidence": "enable_prompt_expansion (boolean, default false): \"If set to true, the prompt will be expanded for better results.\""
+        },
+        {
+          "id": "screen.safety_checker",
+          "kind": "screen",
+          "active": true,
+          "detail": "Screening runs on your prompt by default, and a flagged image is returned as a black image rather than an error — so a black result is a screening outcome, not a failed request.",
+          "disable_with": { "enable_safety_checker": false },
+          "source": "fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/flux-2",
+          "evidence": "enable_safety_checker (boolean, default true): \"Disabling it requires account authorization; unauthorized requests are always checked, and images flagged as unsafe are returned as black images.\""
+        },
+        {
+          "id": "pin.image_size",
+          "kind": "pin",
+          "active": true,
+          "detail": "The frame size comes from the parameter, not from your prose: words like 'wide' or '16:9' do not move it.",
+          "disable_with": null,
+          "source": "fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/flux-2",
+          "evidence": "image_size (default \"landscape_4_3\"): \"The size of the image to generate. The width and height must be between 512 and 2048 pixels.\""
+        }
+      ],
+      "accepts_image": false,
+      "reference": {
+        "accepts": false,
+        "note": "FLUX.2 is a text-to-image endpoint in this dataset: no image input is documented for it. fal-ai/flux-2/edit is the entry that takes one.",
+        "source": "fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/flux-2"
+      }
+    },
+    "flux-2-pro": {
+      "provider": "fal",
+      "endpoint": "fal-ai/flux-2-pro",
+      "kind": "image",
+      "display": "FLUX.2 Pro (fal)",
+      "params": {
+        "image_size": { "default": "landscape_4_3" },
+        "output_format": { "default": "jpeg", "options": ["jpeg", "png"] },
+        "safety_tolerance": { "default": "2", "options": ["1", "2", "3", "4", "5"] },
+        "enable_safety_checker": { "default": true }
+      },
+      "layers": [
+        {
+          "id": "screen.safety_checker",
+          "kind": "screen",
+          "active": true,
+          "detail": "Screening runs on your prompt by default; authorized callers can turn it off.",
+          "disable_with": { "enable_safety_checker": false },
+          "source": "fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/flux-2-pro",
+          "evidence": "enable_safety_checker (boolean, default true): \"Whether to enable the safety checker. Disabling it requires account authorization; unauthorized requests are always checked.\""
+        },
+        {
+          "id": "screen.safety_tolerance",
+          "kind": "screen",
+          "active": true,
+          "detail": "A second, finer screening knob than the boolean: 1 is strictest and 5 most permissive, and this endpoint sits at 2. A prompt that renders elsewhere can come back refused here.",
+          "disable_with": null,
+          "source": "fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/flux-2-pro",
+          "evidence": "safety_tolerance (string, enum 1-5, default \"2\"): \"The safety tolerance level for the generated image. 1 being the most strict and 5 being the most permissive.\""
+        },
+        {
+          "id": "pin.image_size",
+          "kind": "pin",
+          "active": true,
+          "detail": "The frame size is set by the parameter, not by your prose.",
+          "disable_with": null,
+          "source": "fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/flux-2-pro",
+          "evidence": "image_size (default \"landscape_4_3\")"
+        }
+      ],
+      "accepts_image": false,
+      "reference": {
+        "accepts": false,
+        "note": "FLUX.2 Pro is a text-to-image endpoint in this dataset: no image input is documented for it.",
+        "source": "fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/flux-2-pro"
+      }
+    },
+    "seedream-v4": {
+      "provider": "fal",
+      "endpoint": "fal-ai/bytedance/seedream/v4/text-to-image",
+      "kind": "image",
+      "display": "Seedream 4.0 (ByteDance)",
+      "params": {
+        "image_size": { "default": { "width": 2048, "height": 2048 } },
+        "num_images": { "default": 1 },
+        "max_images": { "default": 1 },
+        "enhance_prompt_mode": { "default": "standard", "options": ["standard", "fast"] },
+        "enable_safety_checker": { "default": true }
+      },
+      "layers": [
+        {
+          "id": "rewrite.prompt_enhancement",
+          "kind": "rewrite",
+          "active": true,
+          "detail": "Seedream enhances the prompt before generation, and the parameter chooses how rather than whether: there is no documented switch that turns it off. Writing the prompt you actually want is how you keep control of what comes back.",
+          "disable_with": null,
+          "source": "fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/bytedance/seedream/v4/text-to-image",
+          "evidence": "enhance_prompt_mode (string, enum [standard, fast], default \"standard\"): \"The mode to use for enhancing prompt enhancement. Standard mode provides higher quality results but takes longer to generate. Fast mode provides average quality results but takes less time to generate.\""
+        },
+        {
+          "id": "screen.safety_checker",
+          "kind": "screen",
+          "active": true,
+          "detail": "Screening runs on your prompt by default.",
+          "disable_with": { "enable_safety_checker": false },
+          "source": "fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/bytedance/seedream/v4/text-to-image",
+          "evidence": "enable_safety_checker (boolean, default true): \"If set to true, the safety checker will be enabled. Disabling it requires account authorization; unauthorized requests are always checked.\""
+        },
+        {
+          "id": "pin.image_size",
+          "kind": "pin",
+          "active": true,
+          "detail": "Size is a parameter, and this one has a floor and a ceiling: total pixels must land between 960x960 and 4096x4096.",
+          "disable_with": null,
+          "source": "fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/bytedance/seedream/v4/text-to-image",
+          "evidence": "image_size (default {\"width\": 2048, \"height\": 2048}): \"The size of the generated image. Total pixels must be between 960x960 and 4096x4096.\""
+        }
+      ],
+      "accepts_image": false,
+      "reference": {
+        "accepts": false,
+        "note": "Seedream 4.0 text-to-image takes no image input in this dataset; fal-ai/bytedance/seedream/v4/edit is the entry that does.",
+        "source": "fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/bytedance/seedream/v4/text-to-image"
+      }
+    },
+    "qwen-image": {
+      "provider": "fal",
+      "endpoint": "fal-ai/qwen-image",
+      "kind": "image",
+      "display": "Qwen-Image (fal)",
+      "params": {
+        "image_size": { "default": "landscape_4_3" },
+        "num_images": { "default": 1 },
+        "num_inference_steps": { "default": 30 },
+        "guidance_scale": { "default": 2.5 },
+        "acceleration": { "default": "none", "options": ["none", "regular", "high"] },
+        "output_format": { "default": "png", "options": ["jpeg", "png"] },
+        "use_turbo": { "default": false },
+        "negative_prompt": { "default": " " },
+        "enable_safety_checker": { "default": true }
+      },
+      "layers": [
+        {
+          "id": "pin.negative_prompt",
+          "kind": "pin",
+          "active": true,
+          "detail": "This endpoint has its own negative-prompt field. A negative written into the prompt text is in the wrong place: it is a parameter here.",
+          "disable_with": null,
+          "source": "fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/qwen-image",
+          "evidence": "negative_prompt (string, default \" \"): \"The negative prompt for the generation\""
+        },
+        {
+          "id": "pin.turbo_profile",
+          "kind": "pin",
+          "active": false,
+          "detail": "Turbo mode swaps in its own settings — 10 steps at CFG 1.2 — so your step and guidance numbers stop applying. Off by default.",
+          "disable_with": null,
+          "source": "fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/qwen-image",
+          "evidence": "use_turbo (boolean, default false): \"Enable turbo mode for faster generation with high quality. When enabled, uses optimized settings (10 steps, CFG=1.2).\""
+        },
+        {
+          "id": "screen.safety_checker",
+          "kind": "screen",
+          "active": true,
+          "detail": "Screening runs on your prompt by default, and a flagged image comes back black.",
+          "disable_with": { "enable_safety_checker": false },
+          "source": "fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/qwen-image",
+          "evidence": "enable_safety_checker (boolean, default true): \"Disabling it requires account authorization; unauthorized requests are always checked, and images flagged as unsafe are returned as black images.\""
+        }
+      ],
+      "accepts_image": false,
+      "reference": {
+        "accepts": false,
+        "note": "Qwen-Image is a text-to-image endpoint in this dataset: no image input is documented for it. fal-ai/qwen-image-edit is the entry that takes one.",
+        "source": "fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/qwen-image"
+      }
+    },
+    "nano-banana": {
+      "provider": "fal",
+      "endpoint": "fal-ai/nano-banana",
+      "kind": "image",
+      "display": "Nano Banana (Gemini image)",
+      "params": {
+        "aspect_ratio": { "default": "1:1", "options": ["21:9", "16:9", "3:2", "4:3", "5:4", "1:1", "4:5", "3:4", "2:3", "9:16"] },
+        "num_images": { "default": 1 },
+        "output_format": { "default": "png", "options": ["jpeg", "png", "webp"] },
+        "safety_tolerance": { "default": "4", "options": ["1", "2", "3", "4", "5", "6"] },
+        "limit_generations": { "default": true }
+      },
+      "layers": [
+        {
+          "id": "rewrite.limit_generations",
+          "kind": "rewrite",
+          "active": true,
+          "detail": "With this on, the endpoint disregards any instruction in your prompt about how many images to make — the count is the parameter's business, not the prompt's.",
+          "disable_with": { "limit_generations": false },
+          "source": "fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/nano-banana",
+          "evidence": "limit_generations (boolean, default true): \"Experimental parameter to limit the number of generations from each round of prompting to 1. Set to `True` to to disregard any instructions in the prompt regarding the number of images to generate.\""
+        },
+        {
+          "id": "screen.safety_tolerance",
+          "kind": "screen",
+          "active": true,
+          "detail": "A six-step screening knob rather than a boolean, and this endpoint sits at 4.",
+          "disable_with": null,
+          "source": "fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/nano-banana",
+          "evidence": "safety_tolerance (string, enum 1-6, default \"4\"): \"The safety tolerance level for content moderation. 1 is the most strict (blocks most content), 6 is the least strict.\""
+        },
+        {
+          "id": "pin.aspect_ratio",
+          "kind": "pin",
+          "active": true,
+          "detail": "The frame shape is a parameter with ten documented values; describing it in prose does not set it.",
+          "disable_with": null,
+          "source": "fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/nano-banana",
+          "evidence": "aspect_ratio (string, default \"1:1\", enum 21:9, 16:9, 3:2, 4:3, 5:4, 1:1, 4:5, 3:4, 2:3, 9:16): \"The aspect ratio of the generated image.\""
+        }
+      ],
+      "accepts_image": false,
+      "reference": {
+        "accepts": false,
+        "note": "This is the text-to-image entry; fal-ai/nano-banana/edit is the one that takes images.",
+        "source": "fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/nano-banana"
+      }
+    },
+    "flux-2-edit": {
+      "provider": "fal",
+      "endpoint": "fal-ai/flux-2/edit",
+      "kind": "image",
+      "display": "FLUX.2 Edit (fal)",
+      "params": {
+        "image_urls": { "default": null },
+        "image_size": { "default": null },
+        "num_images": { "default": 1 },
+        "output_format": { "default": "png", "options": ["jpeg", "png"] },
+        "guidance_scale": { "default": 2.5 },
+        "num_inference_steps": { "default": 28 },
+        "acceleration": { "default": "regular", "options": ["none", "regular", "high"] },
+        "enable_prompt_expansion": { "default": false },
+        "enable_safety_checker": { "default": true }
+      },
+      "layers": [
+        {
+          "id": "pin.image_urls",
+          "kind": "pin",
+          "active": true,
+          "detail": "The images go in the image_urls parameter, not in the prose, and the endpoint keeps the first four and silently ignores the rest.",
+          "disable_with": null,
+          "source": "fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/flux-2/edit",
+          "evidence": "image_urls (array): \"The URLs of the images for editing. A maximum of 4 images are allowed, if more are provided, only the first 4 will be used.\""
+        },
+        {
+          "id": "expand.prompt_expansion",
+          "kind": "expand",
+          "active": false,
+          "detail": "Off unless asked for: with it on, an edit instruction gets rewritten before it is applied.",
+          "disable_with": null,
+          "source": "fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/flux-2/edit",
+          "evidence": "enable_prompt_expansion (boolean, default false): \"If set to true, the prompt will be expanded for better results.\""
+        },
+        {
+          "id": "screen.safety_checker",
+          "kind": "screen",
+          "active": true,
+          "detail": "Screening runs by default, and a flagged result comes back as a black image.",
+          "disable_with": { "enable_safety_checker": false },
+          "source": "fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/flux-2/edit",
+          "evidence": "enable_safety_checker (boolean, default true): \"Disabling it requires account authorization; unauthorized requests are always checked, and images flagged as unsafe are returned as black images.\""
+        }
+      ],
+      "accepts_image": true,
+      "reference": {
+        "accepts": true,
+        "field": "image_urls",
+        "constraints": "a maximum of 4 images; the endpoint keeps the first 4 and drops the rest",
+        "note": "An editing endpoint: the image is the subject of the request rather than a style reference. 'last_frame' has nowhere to go here.",
+        "source": "fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/flux-2/edit",
+        "evidence": "image_urls (array): \"The URLs of the images for editing. A maximum of 4 images are allowed, if more are provided, only the first 4 will be used.\""
+      }
+    },
     "veo3-fast": {
       "provider": "fal",
       "endpoint": "fal-ai/veo3/fast",

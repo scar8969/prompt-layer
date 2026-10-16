@@ -72,7 +72,10 @@ def test_every_facet_is_sourced_and_says_why_the_model_needs_it():
     camera = next(f for f in facets if f["id"] == "camera_move")
     assert "dolly in" in camera["options"]
     duration = next(f for f in facets if f["id"] == "duration")
-    assert duration["options_from_params"] == "seconds"
+    # A facet names the parameters that can carry it, in the order to try, so
+    # an endpoint that documents 'duration' rather than 'seconds' is still
+    # asked about its own values.
+    assert duration["options_from_params"] == ["seconds", "duration"]
 
 
 def test_the_cue_words_are_labelled_as_a_heuristic_not_a_published_rule():
@@ -407,3 +410,49 @@ def test_the_plan_and_the_scenes_agree_about_what_an_answer_fills():
     result = build_scenes(CONCEPT, model="sora-2", model_detail=model_detail("sora-2"),
                           answers=answers)
     assert "slow pan left" in result["scenes"][0]["prompt"]
+
+
+# ------------------------------------------------- the model you are discussing
+def test_the_endpoint_you_are_discussing_decides_the_answer_options():
+    """Two endpoints document different clip lengths, so the same concept is
+    asked about differently — which is what makes the discussion model a real
+    choice rather than a label."""
+    concept = "a lighthouse keeper walks out onto the pier at dawn"
+
+    def asked(slug):
+        result = plan(concept, model_detail=model_detail(slug))
+        return next(q for q in result["questions"] if q["facet"] == "duration")
+
+    sora, veo, hailuo = asked("sora-2"), asked("veo3-fast"), asked("hailuo-02-i2v")
+    assert sora["options"] == ["4", "8", "12", "16", "20"]
+    assert veo["options"] == ["8s"]
+    assert hailuo["options"] == ["6"]
+    # Each question says which endpoint's parameter the options came from.
+    assert veo["options_from"]["parameter"] == "duration"
+    assert sora["options_from"]["parameter"] == "seconds"
+    assert "Veo 3 Fast" in veo["source"]
+    # The rule the question rests on is still the published one, with its quote.
+    assert veo["evidence"] == sora["evidence"]
+    assert "/" in veo["source"].replace(" ", "-") or veo["options_from"]
+
+
+def test_an_endpoint_that_documents_nothing_for_a_facet_offers_no_options():
+    """No options and no invented ones: the facet's own published vocabulary is
+    used only when it has one, and otherwise the question is free text."""
+    result = plan("a kite over a field", model_detail=model_detail("wan-2.2-a14b-i2v"))
+    duration = next(q for q in result["questions"] if q["facet"] == "duration")
+    assert duration["options"] == []
+    assert duration["options_from"] is None
+    assert duration["free"] is True
+
+
+def test_the_shape_question_asks_about_the_endpoints_own_size_parameter():
+    aspect_of = lambda slug: next(q for q in plan("a kite over a field",
+                                                  model_detail=model_detail(slug))["questions"]
+                                  if q["facet"] == "aspect")
+    sora = aspect_of("sora-2")
+    assert sora["options"] == ["720x1280", "1280x720"]
+    assert sora["options_from"]["parameter"] == "size"
+    veo = aspect_of("veo3-fast")
+    assert veo["options"] == ["16:9"]
+    assert veo["options_from"]["parameter"] == "aspect_ratio"

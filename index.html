@@ -293,7 +293,11 @@
 
     <div class="space-y-4">
       <div class="bg-white border border-black/10 rounded-card p-5">
-        <label class="block text-xs font-semibold uppercase tracking-wider text-[#77717A] mb-1.5">Video model</label>
+        <label class="block text-xs font-semibold uppercase tracking-wider text-[#77717A] mb-1.5">Discussing for</label>
+        <select id="dModel" class="w-full rounded-card border-black/15 text-sm mb-1"></select>
+        <div id="dModelNote" class="text-[11px] text-[#77717A] mb-4"></div>
+
+        <label class="block text-xs font-semibold uppercase tracking-wider text-[#77717A] mb-1.5">Scenes built for</label>
         <select id="vModel" class="w-full rounded-card border-black/15 text-sm mb-4"></select>
 
         <label class="block text-xs font-semibold uppercase tracking-wider text-[#77717A] mb-1.5">Explain the scene — or the whole video</label>
@@ -430,12 +434,23 @@
     $('iTemplate').innerHTML = Object.entries(design.templates || {}).map(([id, t]) =>
       `<option value="${id}">${t.label}</option>`).join('');
     $('vTemplate').innerHTML = $('iTemplate').innerHTML;
-    $('model').innerHTML = models.map(m =>
-      `<option value="${m.slug}">${m.display} — ${m.provider}${m.active_layer_count ? ' · ' + m.active_layer_count + ' active layer(s)' : ''}</option>`).join('');
-    // The video tab only offers endpoints that make video.
-    $('vModel').innerHTML = models.filter(m => m.kind === 'video').map(m =>
-      `<option value="${m.slug}">${m.display} — ${m.provider}${m.accepts_image ? ' · takes an image' : ''}</option>`).join('')
-      || models.map(m => `<option value="${m.slug}">${m.display} — ${m.provider}</option>`).join('');
+    // Grouped by what the endpoint makes, so an image prompt is picked from the
+    // image endpoints instead of from the top of one long list.
+    const byKind = { image: [], video: [], chat: [] };
+    models.forEach(m => (byKind[m.kind] || (byKind[m.kind] = [])).push(m));
+    const option = (m) => `<option value="${m.slug}">${m.display} — ${m.provider}`
+      + `${m.active_layer_count ? ' · ' + m.active_layer_count + ' active layer(s)' : ''}`
+      + `${m.accepts_image ? ' · takes an image' : ''}</option>`;
+    const GROUP_LABEL = { image: 'Image endpoints', video: 'Video endpoints', chat: 'Chat endpoints' };
+    const ordered = ['image', 'video', 'chat'].filter(k => (byKind[k] || []).length);
+    $('model').innerHTML = ordered
+      .map(k => `<optgroup label="${GROUP_LABEL[k] || k}">${byKind[k].map(option).join('')}</optgroup>`).join('')
+      || models.map(option).join('');
+    // The conversation and the scenes both end in a storyboard, so the video tab
+    // offers the endpoints that make video.
+    const videoOptions = (byKind.video || []).map(option).join('') || models.map(option).join('');
+    $('vModel').innerHTML = videoOptions;
+    $('dModel').innerHTML = videoOptions;
     if (generationGate) {
       $('vGate').innerHTML = generationGate.enabled
         ? '<span class="text-[#0a7d33]">This deployment is allowed to generate.</span>'
@@ -446,6 +461,7 @@
     await onModel();
     // The model sets are per-browser, so they can only be drawn once the
     // pickers have their options. Restore whichever one you last switched to.
+    renderDModelNote();
     $('mpBar').classList.remove('hidden');
     modelSets = readSets();
     renderSets();
@@ -929,6 +945,24 @@
                                 'time_of_day', 'tone', 'style', 'duration', 'aspect']);
   const MULTI_FACET = new Set(['audio', 'negative']);
 
+  // Two models, two jobs. The conversation is held for the endpoint you are
+  // discussing — its documented parameters decide which options the questions
+  // offer, so a 6/10 second endpoint is asked about differently from a 5/10 one —
+  // and the scenes are built for the endpoint you actually intend to call. They
+  // default to the same endpoint; when they differ, the note under them says so
+  // rather than letting one silently stand in for the other.
+  function discussionModel() {
+    return $('dModel').value || $('vModel').value;
+  }
+
+  function renderDModelNote() {
+    const discussing = discussionModel();
+    const building = $('vModel').value;
+    $('dModelNote').textContent = discussing === building
+      ? 'The conversation and the scenes both use this endpoint.'
+      : `Discussing for ${modelLabel(discussing)} — the scenes will be built for ${modelLabel(building)}.`;
+  }
+
   function facetById(id) {
     return ((storyboardIndex || {}).facets || []).find(f => f.id === id) || null;
   }
@@ -953,7 +987,7 @@
     let data;
     try {
       data = await api('/storyboard', { method: 'POST', body: JSON.stringify({
-        action: 'plan', concept, answers, model: $('vModel').value,
+        action: 'plan', concept, answers, model: discussionModel(),
       }) });
     } catch (e) { banner('The planner failed: ' + e.message); return; }
     renderReading(data);
@@ -1000,6 +1034,7 @@
         <div class="text-[13px] font-medium">${esc(q.question)}</div>
         <div class="text-[11.5px] text-[#4c4546] mt-1">${esc(q.why)}</div>
         ${opts ? `<div class="flex flex-wrap gap-1.5 mt-2">${opts}</div>` : ''}
+        ${q.options_from ? `<div class="text-[11px] text-[#77717A] mt-1">the values ${esc(q.options_from.endpoint)} documents for the parameter <span class="mono">${esc(q.options_from.parameter)}</span></div>` : ''}
         <div class="flex gap-2 mt-2">
           <input class="qfree flex-1 rounded border-black/15 text-[12px] mono" placeholder="or write it">
           <button type="button" class="qsend text-[11.5px] border border-black/10 rounded px-2 hover:border-black/30">use</button>
@@ -1301,9 +1336,19 @@
   $('vBuild').addEventListener('click', buildScenes);
   $('vReset').addEventListener('click', resetVideo);
   $('vModel').addEventListener('change', async () => {
+    // The scenes' endpoint and the conversation's endpoint are two choices; when
+    // they differ the note under the pickers says which is which.
+    renderDModelNote();
     if (!$('vChatBox').classList.contains('hidden')) readConcept();
     // A different endpoint documents different image rules, so re-check the set.
     if (refImages.length) await checkReferences();
+    renderSets();
+  });
+  $('dModel').addEventListener('change', async () => {
+    renderDModelNote();
+    // The discussion model's own documented parameters are what the questions
+    // offer, so an answer already given is re-read against the new endpoint.
+    if (!$('vChatBox').classList.contains('hidden')) await readConcept();
     renderSets();
   });
   $('vImages').addEventListener('change', (e) => addImages(Array.from(e.target.files || [])));
@@ -1334,13 +1379,16 @@
     const list = raw && Array.isArray(raw.sets) ? raw.sets : [];
     return list.filter(s => s && typeof s.name === 'string' && s.name.trim()
         && s.models && typeof s.models === 'object')
-      .map(s => ({
-        name: s.name.trim().slice(0, 40),
-        models: {
-          preflight: typeof s.models.preflight === 'string' ? s.models.preflight : '',
-          video: typeof s.models.video === 'string' ? s.models.video : '',
-        },
-      }))
+      .map(s => {
+        // A set saved before the discussion model existed names 'preflight' and
+        // 'video' only; read it as the prompt and video endpoints, and let the
+        // discussion follow the video one, which is what it did.
+        const prompt = typeof s.models.prompt === 'string' ? s.models.prompt
+          : (typeof s.models.preflight === 'string' ? s.models.preflight : '');
+        const video = typeof s.models.video === 'string' ? s.models.video : '';
+        const discussion = typeof s.models.discussion === 'string' ? s.models.discussion : video;
+        return { name: s.name.trim().slice(0, 40), models: { prompt, video, discussion } };
+      })
       .filter((s, i, all) => all.findIndex(x => x.name.toLowerCase() === s.name.toLowerCase()) === i);
   }
 
@@ -1350,10 +1398,16 @@
   }
 
   function currentSet() {
-    return { preflight: $('model').value || '', video: $('vModel').value || '' };
+    return {
+      prompt: $('model').value || '',
+      video: $('vModel').value || '',
+      discussion: $('dModel').value || $('vModel').value || '',
+    };
   }
 
-  function sameSet(a, b) { return a.preflight === b.preflight && a.video === b.video; }
+  function sameSet(a, b) {
+    return a.prompt === b.prompt && a.video === b.video && a.discussion === b.discussion;
+  }
 
   function lastSetName() {
     try { return localStorage.getItem(SETS_KEY + '.last'); } catch (e) { return null; }
@@ -1380,9 +1434,13 @@
     const chips = modelSets.map(s => {
       // A set can name an endpoint this dataset no longer documents. Say so on
       // the chip rather than silently applying a different model.
-      const gone = [s.models.preflight, s.models.video].filter(v => v && !known.has(v));
+      const named = [s.models.prompt, s.models.video, s.models.discussion];
+      const gone = [...new Set(named.filter(v => v && !known.has(v)))];
       const cls = 'mpset' + (s.name === live ? ' on' : '') + (gone.length ? ' stale' : '');
-      const title = gone.length ? 'names ' + gone.join(' and ') + ', which this dataset does not document' : 'switch to this set';
+      const title = gone.length
+        ? 'names ' + gone.join(' and ') + ', which this dataset does not document'
+        : `prompt: ${modelLabel(s.models.prompt)} · video: ${modelLabel(s.models.video)}`
+          + ` · discussion: ${modelLabel(s.models.discussion)}`;
       return `<span class="${cls}" title="${esc(title)}">
         <button data-set="${encodeURIComponent(s.name)}">${esc(s.name)}${gone.length ? ' ⚠' : ''}</button>
         <button class="x" data-drop="${encodeURIComponent(s.name)}" title="delete this set">×</button></span>`;
@@ -1397,25 +1455,30 @@
   async function applySet(set, quiet = false) {
     const known = new Set(models.map(m => m.slug));
     const missing = [];
-    for (const [where, slug] of [['preflight', set.models.preflight], ['video', set.models.video]]) {
+    const targets = [['prompt', 'model'], ['video', 'vModel'], ['discussion', 'dModel']];
+    for (const [where, id] of targets) {
+      const slug = set.models[where];
       if (!slug) continue;
-      const select = where === 'video' ? $('vModel') : $('model');
-      if (known.has(slug)) select.value = slug;
+      if (known.has(slug)) $(id).value = slug;
       else missing.push(`${where} → ${slug}`);
     }
     await onModel();
     // The same follow-ups the pickers run when moved by hand: a different
-    // endpoint documents different image rules, and a different chat model
+    // endpoint documents different image rules, and a different discussion model
     // means the reading has to be re-asked.
+    renderDModelNote();
     if (!$('vChatBox').classList.contains('hidden')) await readConcept();
     if (refImages.length) await checkReferences();
     // Remember before drawing: the bar marks the remembered set as live.
     rememberSet(set.name);
     renderSets();
     if (!quiet) {
+      const described = `${modelLabel(set.models.prompt)} (prompt) · `
+        + `${modelLabel(set.models.video)} (scenes) · `
+        + `${modelLabel(set.models.discussion)} (discussion)`;
       $('mpNote').textContent = missing.length
         ? `Applied "${set.name}", except ${missing.join(' and ')} — this dataset does not document ${missing.length > 1 ? 'those endpoints' : 'that endpoint'}, so that picker stayed where it was.`
-        : `Applied "${set.name}". ${modelLabel(set.models.preflight)} + ${modelLabel(set.models.video)}.`;
+        : `Applied "${set.name}" — ${described}.`;
     }
   }
 
@@ -1433,7 +1496,8 @@
     $('mpName').value = '';
     renderSets();
     $('mpNote').textContent = `${replaced ? 'Updated' : 'Saved'} "${set.name}" — `
-      + `${modelLabel(cur.preflight)} + ${modelLabel(cur.video)}. Stored in this browser.`;
+      + `${modelLabel(cur.prompt)} (prompt) · ${modelLabel(cur.video)} (scenes) · `
+      + `${modelLabel(cur.discussion)} (discussion). Stored in this browser.`;
   }
 
   function dropSet(name) {

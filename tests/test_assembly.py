@@ -53,6 +53,81 @@ def test_no_bare_unix_paths_are_used_as_sources():
             assert "/" in src and not src.startswith(("/", "C:")), src
 
 
+# ------------------------------------------------------------- image endpoints
+IMAGE_SLUGS = ["flux-2", "flux-2-edit", "flux-2-pro", "nano-banana", "qwen-image", "seedream-v4"]
+
+
+def test_the_image_endpoints_are_in_the_dataset_with_their_documented_params():
+    by_kind = {}
+    for entry in model_list():
+        by_kind.setdefault(entry["kind"], []).append(entry["slug"])
+    assert sorted(by_kind["image"]) == IMAGE_SLUGS, by_kind["image"]
+    assert by_kind["video"], "the video endpoints are still there"
+    assert by_kind["chat"] == ["gpt-4o-mini"]
+
+    from promptlayer import model_detail
+
+    # Values copied from each endpoint's own published schema, spot-checked.
+    assert model_detail("flux-2")["params"]["image_size"]["default"] == "landscape_4_3"
+    assert model_detail("flux-2")["params"]["enable_prompt_expansion"]["default"] is False
+    assert model_detail("seedream-v4")["params"]["enhance_prompt_mode"]["default"] == "standard"
+    assert model_detail("seedream-v4")["params"]["image_size"]["default"] == {"width": 2048, "height": 2048}
+    assert model_detail("nano-banana")["params"]["aspect_ratio"]["default"] == "1:1"
+    assert model_detail("nano-banana")["params"]["safety_tolerance"]["options"] == \
+        ["1", "2", "3", "4", "5", "6"]
+    assert model_detail("qwen-image")["params"]["negative_prompt"]["default"] == " "
+    assert model_detail("flux-2-pro")["params"]["safety_tolerance"]["default"] == "2"
+
+
+def test_an_image_prompt_is_preflighted_against_the_image_endpoint():
+    result = build_preflight("flux-2", "a red sneaker on wet asphalt, product shot")
+    assert result["unknown_model"] is False
+    assert [layer["id"] for layer in result["layers"]] == \
+        ["expand.prompt_expansion", "screen.safety_checker", "pin.image_size"]
+    assert result["full_control_patch"] == {"enable_prompt_expansion": False,
+                                            "enable_safety_checker": False}
+    # A layer that is off by default is reported as off, not counted as active.
+    expansion = next(l for l in result["layers"] if l["id"] == "expand.prompt_expansion")
+    assert expansion["active"] is False
+    assert "expand" not in [l["kind"] for l in result["layers"] if l["active"]]
+
+
+def test_a_chat_only_generic_layer_is_scoped_out_of_an_image_request():
+    result = build_preflight("nano-banana", "a paper crane on a desk")
+    applicable = [l["id"] for l in result["layers"]]
+    assert "serving.system_message" not in applicable
+    conditional = {l["id"]: l for l in result["conditional_layers"]}
+    assert "serving.system_message" in conditional
+    assert "chat" in conditional["serving.system_message"]["why"]
+
+
+def test_the_edit_endpoint_documents_where_the_image_goes():
+    from promptlayer import model_detail
+    from promptlayer.reference import role_support
+
+    detail = model_detail("flux-2-edit")
+    assert detail["kind"] == "image"
+    assert detail["accepts_image"] is True
+    assert detail["reference"]["field"] == "image_urls"
+    assert "maximum of 4 images" in detail["reference"]["constraints"]
+    for role in ("subject", "style", "palette"):
+        assert role_support(role, detail)["supported"] is True, role
+    # An editing endpoint has no place for a closing frame.
+    assert role_support("last_frame", detail)["supported"] is False
+
+
+def test_a_text_to_image_endpoint_says_an_image_has_nowhere_to_go():
+    from promptlayer import model_detail
+    from promptlayer.reference import role_support
+
+    for slug in ("flux-2", "seedream-v4", "qwen-image", "nano-banana"):
+        detail = model_detail(slug)
+        assert detail["accepts_image"] is False, slug
+        support = role_support("subject", detail)
+        assert support["supported"] is False, slug
+        assert "no image input is documented" in support["reason"]
+
+
 # ---------------------------------------------------------------- preflight
 def test_preflight_flags_the_rewriting_optimizer_on_hailuo():
     result = build_preflight("hailuo-02-standard", "a cat surfing a wave")

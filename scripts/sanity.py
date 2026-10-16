@@ -228,6 +228,70 @@ ok("compile answers and stays a dry run",
 _, pst = call("GET", "/api/presets?lang=en&task=fill-mask")
 ok("the Hugging Face presets are still parsed", bool((pst.get("data") or {}).get("presets")), pst)
 
+print("== image endpoints == ")
+_, mlist = call("GET", "/api/models")
+kinds = {}
+for m in (mlist.get("data") or []):
+    kinds.setdefault(m["kind"], []).append(m["slug"])
+ok("the dataset carries the image endpoints next to the video ones",
+   sorted(kinds.get("image") or []) == ["flux-2", "flux-2-edit", "flux-2-pro", "nano-banana",
+                                        "qwen-image", "seedream-v4"], kinds.get("image"))
+ok("and the video and chat endpoints are still there",
+   len(kinds.get("video") or []) == 13 and kinds.get("chat") == ["gpt-4o-mini"],
+   (len(kinds.get("video") or []), kinds.get("chat")))
+_, ip = call("POST", "/api/preflight", {"model": "flux-2", "prompt": "a red sneaker on wet asphalt"})
+ipd = ip.get("data") or {}
+ok("an image prompt is preflighted against the image endpoint",
+   [l["id"] for l in ipd.get("layers") or []] ==
+   ["expand.prompt_expansion", "screen.safety_checker", "pin.image_size"], ipd.get("layers"))
+ok("the off-switches are the image endpoint's own parameters",
+   ipd.get("full_control_patch") == {"enable_prompt_expansion": False,
+                                     "enable_safety_checker": False}, ipd.get("full_control_patch"))
+ok("a layer that is off by default is reported as off, not as active",
+   not any(l["kind"] == "expand" for l in ipd.get("layers") or [] if l["active"]), ipd.get("layers"))
+_, sd = call("POST", "/api/preflight", {"model": "seedream-v4", "prompt": "a paper crane"})
+ok("an endpoint with no off-switch is not handed an invented one",
+   (sd.get("data") or {}).get("full_control_patch") == {"enable_safety_checker": False},
+   (sd.get("data") or {}).get("full_control_patch"))
+ok("the chat-only serving layer is scoped out of an image request",
+   "serving.system_message" not in [l["id"] for l in (sd.get("data") or {}).get("layers") or []],
+   [l["id"] for l in (sd.get("data") or {}).get("layers") or []])
+_, r2i = call("POST", "/api/reference", {"model": "flux-2", "role": "subject",
+    "images": [{"name": "a.png", "role": "subject", "width": 1280, "height": 720,
+                "type": "image/png", "bytes": 100}]})
+ok("a text-to-image endpoint refuses an image it cannot take",
+   [c["id"] for c in (r2i.get("data") or {}).get("checks") or []] == ["role_not_supported"],
+   (r2i.get("data") or {}).get("checks"))
+_, ed = call("POST", "/api/reference", {"model": "flux-2-edit", "role": "subject",
+    "images": [{"name": "a.png", "role": "subject", "width": 1280, "height": 720,
+                "type": "image/png", "bytes": 100}]})
+ok("and the edit endpoint says where the image goes",
+   "image_urls" in json.dumps((ed.get("data") or {}).get("sheet") or {}),
+   (ed.get("data") or {}).get("sheet"))
+
+print("== the endpoint you are discussing decides the answers ==")
+CONCEPT = "a lighthouse keeper walks out onto the pier at dawn"
+def duration_options(slug):
+    _, r = call("POST", "/api/storyboard", {"action": "plan", "concept": CONCEPT, "model": slug})
+    q = next((q for q in (r.get("data") or {}).get("questions") or [] if q["facet"] == "duration"), {})
+    return q
+sora_q, veo_q = duration_options("sora-2"), duration_options("veo3-fast")
+ok("two discussion models offer their own documented clip lengths",
+   sora_q.get("options") == ["4", "8", "12", "16", "20"] and veo_q.get("options") == ["8s"],
+   (sora_q.get("options"), veo_q.get("options")))
+ok("and each question names the parameter the values came from",
+   sora_q.get("options_from", {}).get("parameter") == "seconds"
+   and veo_q.get("options_from", {}).get("parameter") == "duration",
+   (sora_q.get("options_from"), veo_q.get("options_from")))
+ok("the rule behind the question is still the published one, with its quote",
+   bool(veo_q.get("evidence")) and veo_q.get("evidence") == sora_q.get("evidence"),
+   (veo_q.get("evidence"), sora_q.get("evidence")))
+_, mix = call("POST", "/api/storyboard", {"action": "scenes", "concept": CONCEPT,
+                                          "model": "hailuo-02-i2v"})
+mix_scene = ((mix.get("data") or {}).get("scenes") or [{}])[0]
+ok("the scenes are built for the model the scenes were asked for",
+   (mix_scene.get("params") or {}).get("duration") == "6", mix_scene.get("params"))
+
 print()
 print(f"{checks - len(fails)}/{checks} checks passed")
 if fails:

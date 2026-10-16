@@ -171,7 +171,7 @@
       "label": "Clip length",
       "blocking": false,
       "free": true,
-      "options_from_params": "seconds",
+      "options_from_params": ["seconds", "duration"],
       "why": "The endpoint documents the lengths it accepts; a length asked for in prose is ignored.",
       "source": "sora",
       "evidence": "seconds: the clip length, supported values: “4”, “8”, “12”, “16”, “20”."
@@ -181,7 +181,7 @@
       "label": "Aspect / size",
       "blocking": false,
       "free": true,
-      "options_from_params": "size",
+      "options_from_params": ["size", "aspect_ratio", "resolution"],
       "why": "Resolution and aspect are parameters, not words in a prompt.",
       "source": "sora",
       "evidence": "Supported resolutions are dependent on the model selection: sora-2 720x1280, 1280x720, sora-2-pro 720x1280, 1280x720 1024x1792, 1792x1024 1080x1920, 1920x1080"
