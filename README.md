@@ -82,6 +82,11 @@ library.
    root is static and every file in `api/` becomes a function.
 3. Deploy. `/` serves the UI; the four functions answer under `/api/*`.
 
+`vercel.json` sets `includeFiles: promptlayer/**` on every function. That matters:
+the shared logic lives in a Python package outside `api/`, and without it the
+functions would import-fail at runtime with a 500. If a deploy ever 500s on
+`/api/health`, that is the first thing to check.
+
 Compile stays dry-run-only unless you set **all three** of
 `ALLOW_REMOTE_COMPILE=1`, `COMPILE_GATEWAY_URL`, `COMPILE_API_KEY`. That opt-in is
 deliberate: on a public deployment an API key in the environment means anyone can
