@@ -38,7 +38,7 @@ from promptlayer import (  # noqa: E402
 from promptlayer.http import read_json, send_error_json, send_json  # noqa: E402
 
 
-def _storyboard(handler, body):
+def _storyboard(handler, body, detail=None, images=None):
     """Either the client's storyboard, or one built from the same inputs."""
     supplied = body.get("storyboard")
     if isinstance(supplied, dict) and supplied.get("scenes"):
@@ -49,12 +49,23 @@ def _storyboard(handler, body):
                         "Send either 'storyboard' (from /api/storyboard) or 'concept'")
         return None
     model = body.get("model")
-    detail = model_detail(model) if isinstance(model, str) and model else None
     design = body.get("design") if isinstance(body.get("design"), dict) else None
+    # `/api/improve` and `/api/storyboard` both take palette/template at the top
+    # level; accept them here too rather than ignoring a field the caller sent.
+    if body.get("palette") and not (design or {}).get("palette"):
+        design = {**(design or {}), "palette": body["palette"]}
+    if body.get("template") and not (design or {}).get("template"):
+        design = {**(design or {}), "template": body["template"]}
+    answers = body.get("answers") if isinstance(body.get("answers"), dict) else None
+    # The reference images have to reach the scenes, not only the plan: a scene
+    # is what carries the image field, so building it without them would drop
+    # the image between the request and the body.
     return build_scenes(concept, model=model, model_detail=detail, design=design,
                         total_seconds=body.get("total_seconds"),
                         scene_seconds=body.get("scene_seconds"),
-                        aspect=body.get("aspect"))
+                        aspect=body.get("aspect"), answers=answers,
+                        references=images,
+                        template=(design or {}).get("template") or "inline")
 
 
 class handler(BaseHTTPRequestHandler):
@@ -69,18 +80,28 @@ class handler(BaseHTTPRequestHandler):
         if action not in ("plan", "submit"):
             return send_error_json(self, 400, f"Unknown action '{action}'",
                                    available=["plan", "submit"])
-        storyboard = _storyboard(self, body)
-        if storyboard is None:
-            return
-
-        model = body.get("model") or storyboard.get("model")
-        detail = model_detail(model) if isinstance(model, str) and model else None
+        # Resolve the endpoint and the measured images first: the storyboard built
+        # from a bare concept needs them, not just the plan that follows.
+        model = body.get("model")
+        if model is not None and not isinstance(model, str):
+            return send_error_json(self, 400, "Field 'model' must be a string")
+        detail = model_detail(model) if model else None
         if model and not detail:
             return send_error_json(self, 400, f"Unknown model '{model}'")
         references = body.get("references")
         ref_set = build_reference_set(references, detail) if references else None
+        images = (ref_set or {}).get("images")
 
-        plan = build_plan(storyboard, detail, references=(ref_set or {}).get("images"))
+        storyboard = _storyboard(self, body, detail=detail, images=images)
+        if storyboard is None:
+            return
+
+        model = model or storyboard.get("model")
+        detail = detail or (model_detail(model) if isinstance(model, str) and model else None)
+        if model and not detail:
+            return send_error_json(self, 400, f"Unknown model '{model}'")
+
+        plan = build_plan(storyboard, detail, references=images)
         if ref_set:
             plan["reference_set"] = ref_set
 

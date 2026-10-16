@@ -477,6 +477,42 @@ def test_video_accepts_a_storyboard_from_the_other_endpoint():
     assert body["data"]["jobs"][0]["body"]["prompt"] == "a lantern drifts down a river at dusk"
 
 
+def test_video_carries_an_image_into_the_request_built_from_a_concept():
+    """The image has to reach the scene, not only the plan around it."""
+    base = _server_for("video")
+    _, body = _post(base, {
+        "action": "plan", "concept": "A lantern drifts down a river at dusk",
+        "model": "hailuo-02-i2v",
+        "references": [{"name": "frame.png", "role": "first_frame", "width": 1280,
+                        "height": 720, "type": "image/png", "bytes": 1000, "palette": []}],
+    })
+    data = body["data"]
+    job = data["jobs"][0]
+    assert job["image_fields"] == ["first_frame_image"]
+    assert job["body"]["first_frame_image"] == "<attach frame.png (1280x720)>"
+    assert data["totals"]["with_image"] == 1
+    assert data["reference_set"]["images"][0]["role"] == "first_frame"
+
+
+def test_video_accepts_a_top_level_palette_and_template_like_storyboard_does():
+    base = _server_for("video")
+    _, body = _post(base, {"action": "plan", "concept": "A lantern drifts down a river at dusk",
+                           "model": "sora-2", "palette": "amber, cream, walnut brown",
+                           "template": "labelled"})
+    prompt = body["data"]["jobs"][0]["body"]["prompt"]
+    assert "Palette anchors: amber, cream, walnut brown" in prompt
+
+
+def test_video_passes_the_chat_answers_through():
+    base = _server_for("video")
+    _, body = _post(base, {"action": "plan", "concept": "A lantern drifts down a river at dusk",
+                           "model": "sora-2", "answers": {"camera_move": "slow pan left",
+                                                          "duration": "8 seconds each"}})
+    job = body["data"]["jobs"][0]
+    assert "slow pan left" in job["body"]["prompt"]
+    assert job["body"]["seconds"] == "8"
+
+
 def test_video_rejects_bad_input():
     base = _server_for("video")
     for payload in (
