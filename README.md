@@ -104,6 +104,40 @@ Only the per-model read touches the network, only when you type a model id, and 
 is one public document — nothing about your prompt or your machine is sent. Offline,
 it reports the failure and the local collections still work.
 
+### Run it — against a model you name
+
+A preset here is an **input text**, not a parameter set: Hugging Face's defaults carry
+nothing but the example and its source, so there is nothing to map onto a model's
+request body. That left the presets inert — they filled a box and stopped. So the same
+panel takes a **model name, an endpoint URL and an API key**, and sends the prompt to
+the endpoint you named.
+
+The request is made **by the page, to that URL, and nowhere else**:
+
+- The key is read from the field for the one request. It is not stored, not written to
+  `localStorage`, and **never reaches this tool's server** — which is why there is no
+  endpoint behind this feature. A route here would mean the key passing through a
+  server that cannot authenticate the people using it. `tests/test_ui.py` asserts all
+  of it, including that no function under `api/` takes a key out of a request.
+- The body is **editable before it is sent**, and what you see is exactly what goes.
+  Nothing is inferred: a body that is not valid JSON is refused rather than repaired.
+  This is also what makes the box work for an endpoint whose shape is not
+  chat/completions — you change the body, the tool does not guess it.
+- The endpoint must allow calls from a page. That is the provider's CORS policy, not a
+  rule of ours, and the browser refuses **before** anything is sent. Measured
+  2026-10-16: [OI], fal, Together, Groq and Hugging Face allow it; Anthropic and
+  Replicate do not. For those, the Compile tab is the path that works, because it goes
+  through a server.
+
+The reply is shown raw, with its status and timing, under a line naming the URL it came
+from. The tool's own server is not in the path, so there is nothing to log and nothing
+to leak: in testing, the key appeared **zero times** in the dev server's log while the
+named endpoint received it.
+
+![Prompt Layer — the run box: model name, masked API key, endpoint URL, the editable
+body that will be sent, and the reply, above a line naming where it came from
+and stating that the tool's server was not involved](docs/screenshot-run-model.png)
+
 **Video** — talk a concept through, then get one prompt per shot.
 
 A whole video is several shots, and a model given one prompt for all of them produces
@@ -317,7 +351,7 @@ curl -s -X POST localhost:8090/api/video -H 'Content-Type: application/json' \
 
 ```bash
 python dev.py          # http://127.0.0.1:8090   (emulates the Vercel layout)
-python -m pytest -q    # 239 tests
+python -m pytest -q    # 245 tests
 ```
 
 No dependencies — the service, the dataset and the functions are all standard
@@ -370,11 +404,13 @@ Three more, all of them only visible from a real build:
   `requirements-dev.txt` are all downloadable from the deployment's URL — even
   though `dev.py` refuses those same paths locally. What you check should be what
   you shipped; the local emulator and the deployment should publish one allowlist.
-- **The CLI writes files into your tree.** A local `build` leaves `.python-version`,
-  `pyproject.toml` and `uv.lock` behind, describing a project that does not exist
-  (`name = "app"`, no dependencies). They are build output and are ignored — and a
-  `pyproject.toml` in the root is itself one of the triggers for the preset detection
-  above, so committing one would be worse than untidy.
+- **The CLI writes files into your tree — and then publishes them.** A local `build`
+  leaves `.python-version`, `pyproject.toml` and `uv.lock` behind, describing a project
+  that does not exist (`name = "app"`, no dependencies). They are build output, so they
+  are ignored — and because the static layer serves the directory as-is, they have to be
+  in `.vercelignore` as well, or the deployment serves a `pyproject.toml` for a project
+  nobody wrote. A `pyproject.toml` in the root is itself one of the triggers for the
+  preset detection above, so committing one would be worse than untidy.
 
 `tests/test_deploy.py` asserts all of it, so a regression fails in the suite rather
 than on Vercel.
@@ -424,7 +460,7 @@ scripts/              the two parsers that generate the preset datasets
 dev.py                local emulation of the Vercel layout
 vercel.json           framework pinned to "Other", per-function memory/timeout
 .vercelignore         what is uploaded: the page, the functions, promptlayer/
-tests/                239 tests: datasets, assembly, improvement, the planner, the
+tests/                245 tests: datasets, assembly, improvement, the planner, the
                       deployment shape, the deployed entry points
 ```
 

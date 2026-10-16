@@ -211,6 +211,32 @@
             <div class="text-[10.5px] text-[#77717A] mt-1">One read of that model's public page data from huggingface.co. Nothing is sent.</div>
             <div id="pModelOut" class="mt-2 space-y-1.5 text-[12px]"></div>
           </div>
+
+          <div class="mt-3 pt-3 border-t border-black/10">
+            <label class="block text-[10.5px] font-semibold uppercase tracking-wider text-[#77717A] mb-1">Run this prompt against a model you name</label>
+            <div class="grid grid-cols-2 gap-2 mb-2">
+              <input id="rName" class="w-full rounded-card border-black/15 text-sm mono" placeholder="gpt-4o-mini" autocomplete="off" spellcheck="false">
+              <input id="rKey" type="password" class="w-full rounded-card border-black/15 text-sm mono" placeholder="API key" autocomplete="off" spellcheck="false">
+            </div>
+            <input id="rUrl" class="w-full rounded-card border-black/15 text-sm mono mb-2" placeholder="https://api.openai.com/v1/chat/completions" autocomplete="off" spellcheck="false">
+
+            <label class="block text-[10.5px] font-semibold uppercase tracking-wider text-[#77717A] mb-1">The body that gets sent — editable</label>
+            <textarea id="rBody" rows="7" class="w-full rounded-card border-black/15 text-[11.5px] mono" spellcheck="false"></textarea>
+
+            <div class="flex flex-wrap gap-2 mt-2">
+              <button id="rRun" class="text-[12px] font-medium border border-black/10 px-3 py-1.5 rounded-card hover:border-black/30">Send it</button>
+              <button id="rRebuild" class="text-[12px] font-medium border border-black/10 px-3 py-1.5 rounded-card hover:border-black/30">Rebuild from the prompt</button>
+            </div>
+
+            <div class="text-[10.5px] text-[#77717A] mt-1.5">
+              The key is read from that field for this one request and nowhere else — not stored, not put in
+              the page's storage, not sent to this tool's server. The request goes from this page straight to
+              the URL you type, so the endpoint has to allow calls from a page: Anthropic and Replicate refuse
+              them, [OI], fal, Together, Groq and Hugging Face allow them. For the ones that refuse, the
+              Compile tab is the path that works, because it goes through a server.
+            </div>
+            <div id="rReply" class="mt-2"></div>
+          </div>
         </div>
       </details>
 
@@ -758,10 +784,12 @@
     document.querySelectorAll('.preset').forEach(btn => btn.onclick = () => {
       $('iPrompt').value = presetLine(list[Number(btn.dataset.i)]);
       $('iPrompt').focus();
+      paintRunBody(false);          // a preset fills the prompt; the body follows it
     });
     document.querySelectorAll('.wx').forEach(el => el.onclick = () => {
       $('iPrompt').value = el.dataset.line;
       $('iPrompt').focus();
+      paintRunBody(false);
     });
     document.querySelectorAll('.wxcopy').forEach(el => el.onclick = ev => {
       ev.stopPropagation();
@@ -769,6 +797,85 @@
       el.textContent = 'copied';
       setTimeout(() => { el.textContent = 'copy the widget block'; }, 1200);
     });
+  }
+
+  // ------------------------------------------------- running it for real
+  // A preset here is an input text, not a parameter set: Hugging Face's defaults
+  // carry nothing but the example and its source. So the preset fills the prompt and
+  // this box is the other half — it sends that prompt to an endpoint the user names.
+  //
+  // The request is made by this page, to the URL in the field, and nowhere else. The
+  // key is read from the input for the one request: it is not stored, not written to
+  // localStorage, and never reaches this tool's server. That is why there is no
+  // endpoint behind this — a route here would mean the key passing through us.
+  let runEdited = false;
+
+  function defaultRunBody() {
+    const prompt = $('iPrompt').value.trim();
+    const name = $('rName').value.trim();
+    return JSON.stringify({
+      model: name || '<the model name to call>',
+      messages: [{ role: 'user', content: prompt || '<your prompt>' }]
+    }, null, 2);
+  }
+
+  function paintRunBody(force) {
+    if (!force && runEdited) return;
+    $('rBody').value = defaultRunBody();
+  }
+
+  function runNote(html, tone) {
+    const box = tone === 'bad'
+      ? 'text-[#B42318] bg-[#FDECEC] border-[#F5C6C2]'
+      : 'text-[#8A5A00] bg-[#FFF3D6] border-[#F0D9A0]';
+    return `<div class="text-[11px] ${box} border rounded-card px-3 py-2">${html}</div>`;
+  }
+
+  async function runNamedModel() {
+    const url = $('rUrl').value.trim();
+    const key = $('rKey').value;            // read here, used once, never stored
+    const out = $('rReply');
+
+    if (!url) {
+      out.innerHTML = runNote('Type the endpoint URL first. The request goes to that URL and nowhere else.');
+      $('rUrl').focus();
+      return;
+    }
+    let body;
+    try { body = JSON.parse($('rBody').value); }
+    catch (e) {
+      out.innerHTML = runNote('Nothing was sent — the body is not valid JSON: ' + esc(e.message), 'bad');
+      return;
+    }
+
+    out.innerHTML = '<div class="text-[11.5px] text-[#77717A]">Sending…</div>';
+    const started = performance.now();
+    let res, text;
+    try {
+      const headers = { 'Content-Type': 'application/json' };
+      if (key) headers.Authorization = 'Bearer ' + key;
+      res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
+      text = await res.text();
+    } catch (e) {
+      // A page can only reach an endpoint that permits page-origin requests. This is
+      // the provider's CORS policy, not a rule of ours, and the browser refuses before
+      // anything is sent — so say that, rather than reporting a failed request.
+      out.innerHTML = runNote(
+        'The browser blocked this before it was sent: <span class="mono">' + esc(e.message) + '</span>. ' +
+        'That is the provider\'s policy on requests made from a page — measured 2026-10-16, Anthropic and ' +
+        'Replicate refuse them while [OI], fal, Together, Groq and Hugging Face allow them. Nothing left ' +
+        'your browser. For a provider that refuses, use the Compile tab, which goes through a server.');
+      return;
+    }
+
+    const ms = Math.round(performance.now() - started);
+    let pretty = text;
+    try { pretty = JSON.stringify(JSON.parse(text), null, 2); } catch (e) { /* not JSON — show as it came */ }
+    out.innerHTML =
+      `<div class="text-[11px] text-[#77717A] mb-1">` +
+      `<span class="font-medium text-[#191c1d]">${res.status} ${esc(res.statusText)}</span> · ${ms} ms · ` +
+      `${esc(url)} · sent by this page, this tool's server was not involved</div>` +
+      `<pre class="json">${esc(pretty).slice(0, 20000)}</pre>`;
   }
 
   function attr(value) {
@@ -1364,6 +1471,12 @@
   $('pType').addEventListener('change', loadPresetList);
   $('pFetch').addEventListener('click', readModelCard);
   $('pModel').addEventListener('keydown', e => { if (e.key === 'Enter') readModelCard(); });
+  $('rRun').addEventListener('click', runNamedModel);
+  $('rRebuild').addEventListener('click', () => { runEdited = false; paintRunBody(true); });
+  $('rName').addEventListener('input', () => paintRunBody(false));
+  $('rBody').addEventListener('input', () => { runEdited = true; });
+  $('iPrompt').addEventListener('input', () => paintRunBody(false));
+  paintRunBody(true);
   $('copyImproved').addEventListener('click', () => navigator.clipboard.writeText($('iResult').textContent));
   $('iImage').addEventListener('change', (e) => onImage(e.target.files && e.target.files[0]));
 

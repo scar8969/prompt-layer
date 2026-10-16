@@ -90,7 +90,8 @@ def test_the_dev_only_paths_are_not_published():
     what you shipped.
     """
     ignored = set(_lines(".vercelignore"))
-    for entry in ("tests/", "scripts/", "docs/", "dev.py", "requirements-dev.txt"):
+    for entry in ("tests/", "scripts/", "docs/", "dev.py", "requirements-dev.txt",
+                  ".python-version", "pyproject.toml", "uv.lock"):
         assert entry in ignored, f"{entry} would be published at the deployment's URL"
 
 
