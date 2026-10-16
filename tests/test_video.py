@@ -200,3 +200,51 @@ def test_an_upstream_error_is_reported_not_raised(monkeypatch):
     assert result["submitted"] is True
     assert all(r["status"] is None for r in result["results"])
     assert "connection reset" in result["results"][0]["error"]
+
+
+# ------------------------------------------------------ what counts as an image
+def test_an_edit_endpoints_image_is_counted_as_an_image():
+    """flux-2-edit documents its image field *as* a parameter, so counting the
+    body's extra keys would report zero images on the one endpoint that needs one."""
+    images = [{"index": 1, "name": "a.png", "role": "subject",
+               "width": 1280, "height": 720, "type": "image/png"}]
+    scenes = build_scenes("make the jacket red", model="flux-2-edit",
+                          model_detail=model_detail("flux-2-edit"), references=images)
+    plan = build_plan(scenes, model_detail("flux-2-edit"), references=images)
+    job = plan["jobs"][0]
+    assert job["image_fields"] == ["image_urls"]
+    assert job["body"]["image_urls"] == "<attach a.png (1280x720)>"
+    assert plan["totals"]["with_image"] == 1
+
+
+def test_a_scene_that_carries_no_image_reports_none():
+    scenes = build_scenes(CONCEPT, model="sora-2", model_detail=model_detail("sora-2"))
+    plan = build_plan(scenes, model_detail("sora-2"))
+    assert all(job["image_fields"] == [] for job in plan["jobs"])
+    assert plan["totals"]["with_image"] == 0
+
+
+def test_a_storyboard_with_a_scene_that_has_no_prompt_is_not_a_crash():
+    """The API validates the shape, but build_plan is the library entry point and
+    must not raise on a hand-built storyboard either."""
+    plan = build_plan({"scenes": [{"id": "scene-1"}, {"id": "scene-2", "prompt": "a crane"}]},
+                      model_detail("sora-2"))
+    assert [job["body"]["prompt"] for job in plan["jobs"]] == ["", "a crane"]
+    plan = build_plan({"scenes": ["not-a-scene", 7]}, model_detail("sora-2"))
+    assert plan["jobs"] == []
+    assert plan["totals"]["requests"] == 0
+
+
+def test_a_length_is_labelled_without_doubling_its_unit():
+    """The endpoint's own value may already carry the unit ("8s"), so the label is
+    built from it rather than with another 's' appended — which rendered "8ss"."""
+    for slug, expected in (("veo3-fast", "8s"), ("hailuo-02-i2v", "6s"), ("sora-2", "4s")):
+        detail = model_detail(slug)
+        plan = build_plan(build_scenes(CONCEPT, model=slug, model_detail=detail), detail)
+        note = plan["jobs"][0]["note"]
+        assert note.endswith("· " + expected), (slug, note)
+        assert "ss" not in note, (slug, note)
+    # An endpoint that documents no length says so rather than claiming 0s.
+    plan = build_plan(build_scenes(CONCEPT, model="sora-2", model_detail={"params": {}}),
+                      {"params": {}})
+    assert plan["jobs"][0]["note"].endswith("· ?"), plan["jobs"][0]["note"]

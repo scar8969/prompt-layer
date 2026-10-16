@@ -238,7 +238,25 @@ The Improve lint is the one place whose sources are video guides, because that i
 these rules are published — Sora's cookbook and Veo's guide. The advice is generic
 prompt-writing advice (no feeling-words; length and size are parameters, not prose), and
 every finding names its source so you can weigh it, but a `camera_conflict` raised on an
-image prompt is prompt-writing advice, not a published image rule.
+image prompt is prompt-writing advice, not a published image rule. On an image endpoint the
+response says so itself, in a `lint_note` the tab prints above the findings, rather than
+leaving the source line to imply the rule is that endpoint's.
+
+### Where the image entries come from
+
+The six image entries are not typed in. Their `params` blocks are derived from the
+endpoint's own published schema — fal's queue OpenAPI, vendored verbatim under
+`promptlayer/vendor/fal/` — by `scripts/build_fal_params.py`, which takes the documented
+default, the documented options and the schema's own description of each parameter. `prompt`
+is deliberately excluded: it is the input, not a parameter.
+
+`python scripts/build_fal_params.py --check` exits non-zero if the committed dataset has
+drifted from the schemas, and `tests/test_fal_dataset.py` re-derives the whole thing on
+every run: every schema parameter is documented with the schema's own default, the
+documented set is *exactly* the schema's (so a schema that gains a parameter fails until
+it is read), and every layer's quoted evidence is a verbatim substring of the schema's
+description of the parameter it names. The audit that added this found several entries
+whose evidence was a paraphrase or a truncation, and repaired them.
 
 ## Endpoints
 
@@ -250,10 +268,17 @@ image prompt is prompt-writing advice, not a published image rule.
 | `GET` | `/api/presets` | Hugging Face presets: `?lang=&task=&limit=`, `?collection=widget-examples&section=&task=`, `?model=<hf id>` |
 | `POST` | `/api/preflight` | `{model, prompt, options?, system_message?, image_count?}` |
 | `POST` | `/api/improve` | `{model, prompt, selections?, palette?, template?, clean?, image?}` |
-| `POST` | `/api/storyboard` | `{action:"plan"\|"scenes", concept, answers?, model?, design?, beats?, references?}` |
+| `POST` | `/api/storyboard` | `{action:"plan"\|"scenes", concept, answers?, model?, design?, beats?, references?}` — video endpoints only |
 | `POST` | `/api/reference` | `{model, images:[{role,width,height,type,bytes,palette}]}` — measurements only |
-| `POST` | `/api/video` | `{action:"plan"\|"submit", storyboard\|concept, model?, confirm?}` — dry run unless gated |
+| `POST` | `/api/video` | `{action:"plan"\|"submit", storyboard\|concept, model?, confirm?}` — dry run unless gated; video endpoints only |
 | `POST` | `/api/compile` | `{prompt, style, model?, dry_run?}` |
+
+The two video endpoints refuse a model that cannot make video. Handed an image endpoint
+the layer would still produce something that looks like a job — a prompt, a path, a body —
+for an endpoint that cannot run it, which is the exact failure this tool exists to catch,
+so it answers `400` and names the kind it was given instead. A malformed body gets the same
+treatment: a storyboard whose scenes are not objects with a prompt, or a clip length that is
+not a number, is refused rather than raising inside the handler.
 
 ```bash
 curl -s -X POST localhost:8090/api/preflight -H 'Content-Type: application/json' \
@@ -292,7 +317,7 @@ curl -s -X POST localhost:8090/api/video -H 'Content-Type: application/json' \
 
 ```bash
 python dev.py          # http://127.0.0.1:8090   (emulates the Vercel layout)
-python -m pytest -q    # 191 tests
+python -m pytest -q    # 231 tests
 ```
 
 No dependencies — the service, the dataset and the functions are all standard
@@ -358,7 +383,7 @@ promptlayer/
   http.py             shared request/response helpers
 scripts/              the two parsers that generate the preset datasets
 dev.py                local emulation of the Vercel layout
-tests/                191 tests: datasets, assembly, improvement, the planner, the
+tests/                231 tests: datasets, assembly, improvement, the planner, the
                       deployment shape, the deployed entry points
 ```
 

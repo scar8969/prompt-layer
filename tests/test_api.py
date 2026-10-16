@@ -104,6 +104,21 @@ def _post(base: str, payload: dict):
         return resp.status, json.loads(resp.read().decode())
 
 
+def _post_raw(base: str, payload: dict):
+    """The same call, but a refusal comes back as a value instead of an exception."""
+    req = urllib.request.Request(
+        base + "/",
+        data=json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            return resp.status, json.loads(resp.read().decode())
+    except urllib.error.HTTPError as exc:
+        return exc.code, json.loads(exc.read().decode() or "{}")
+
+
 # ------------------------------------------------------------------ health
 def test_health_reports_ok_and_a_model_count():
     base = _server_for("health")
@@ -523,3 +538,79 @@ def test_video_rejects_bad_input():
         with pytest.raises(urllib.error.HTTPError) as exc:
             _post(base, payload)
         assert exc.value.code == 400, payload
+
+
+# ------------------------------------------------- the wrong endpoint for the job
+def test_video_refuses_an_endpoint_that_cannot_make_video():
+    """Handed an image endpoint the layer would still produce a job — a prompt, a
+    path, a body — for something that endpoint cannot run. It refuses instead."""
+    base = _server_for("video")
+    for slug, kind in (("flux-2", "image"), ("gpt-4o-mini", "chat")):
+        status, body = _post_raw(base, {"action": "plan", "concept": "a paper crane on a desk",
+                                    "model": slug})
+        assert status == 400, (slug, status)
+        assert body["success"] is False
+        assert kind in body["message"]
+        assert slug in body["message"]
+    # ...and a video endpoint still works, so the guard is not a blanket refusal.
+    status, body = _post_raw(base, {"action": "plan", "concept": "a paper crane on a desk",
+                                "model": "veo3-fast"})
+    assert status == 200 and body["data"]["jobs"], body
+
+
+def test_video_refuses_a_storyboard_that_names_an_image_endpoint():
+    base = _server_for("video")
+    status, body = _post_raw(base, {
+        "action": "plan", "model": "flux-2",
+        "storyboard": {"model": "flux-2", "scenes": [{"id": "scene-1", "prompt": "a crane"}]}})
+    assert status == 400 and body["success"] is False, (status, body)
+
+
+def test_storyboard_refuses_an_endpoint_that_cannot_make_video():
+    base = _server_for("storyboard")
+    for action in ("plan", "scenes"):
+        status, body = _post_raw(base, {"action": action, "concept": "a paper crane on a desk",
+                                    "model": "flux-2"})
+        assert status == 400, (action, status)
+        assert "image endpoint" in body["message"]
+    # No model at all is still allowed: the generic planner has no kind to check.
+    status, body = _post_raw(base, {"action": "plan", "concept": "a paper crane on a desk"})
+    assert status == 200 and body["data"]["questions"], body
+
+
+def test_a_malformed_storyboard_is_refused_not_crashed():
+    """A public endpoint must answer a bad body, not die on it: before this the
+    handler raised on the missing key and the function returned nothing at all."""
+    base = _server_for("video")
+    for scenes in ([{"nope": 1}], [{}], "not-a-list", [{"prompt": None}], [{"prompt": "  "}], []):
+        status, body = _post_raw(base, {"action": "plan", "storyboard": {"scenes": scenes}})
+        assert status == 400, (scenes, status, body)
+        assert body["success"] is False
+        assert "scenes" in body["message"] or "prompt" in body["message"]
+    status, body = _post_raw(base, {"action": "plan", "storyboard": "not-an-object"})
+    assert status == 400, (status, body)
+
+
+def test_a_bad_clip_length_is_refused_not_crashed():
+    base = _server_for("storyboard")
+    for field in ("scene_seconds", "total_seconds"):
+        for value in ("abc", {}, True, -3, 10 ** 9):
+            status, body = _post_raw(base, {"action": "scenes", "concept": "a kite over a field",
+                                        "model": "sora-2", field: value})
+            assert status == 400, (field, value, status, body)
+    # A numeric string is a number, and is still accepted.
+    status, body = _post_raw(base, {"action": "scenes", "concept": "a kite over a field",
+                                "model": "sora-2", "scene_seconds": "8"})
+    assert status == 200 and body["data"]["scenes"][0]["seconds"] == "8", body
+
+
+def test_improve_says_where_the_lint_rules_come_from_on_an_image_endpoint():
+    base = _server_for("improve")
+    _, body = _post(base, {"model": "flux-2", "prompt": "a beautiful 8k photo of a sneaker"})
+    note = body["data"]["lint_note"]
+    assert note["id"] == "lint_from_video_guides"
+    assert "advice" in note["detail"] and "/" in note["source"]
+    # A video endpoint does not carry the note: the rules are its own.
+    _, body = _post(base, {"model": "hailuo-02-standard",
+                           "prompt": "a beautiful 8k photo of a sneaker"})
+    assert "lint_note" not in body["data"]

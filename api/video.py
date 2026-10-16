@@ -34,6 +34,7 @@ from promptlayer import (  # noqa: E402
     build_scenes,
     generation_gate,
     model_detail,
+    model_list,
 )
 from promptlayer.http import read_json, send_error_json, send_json  # noqa: E402
 
@@ -41,7 +42,19 @@ from promptlayer.http import read_json, send_error_json, send_json  # noqa: E402
 def _storyboard(handler, body, detail=None, images=None):
     """Either the client's storyboard, or one built from the same inputs."""
     supplied = body.get("storyboard")
-    if isinstance(supplied, dict) and supplied.get("scenes"):
+    if supplied is not None:
+        scenes = supplied.get("scenes") if isinstance(supplied, dict) else None
+        if not isinstance(supplied, dict) or not isinstance(scenes, list) or not scenes:
+            return send_error_json(handler, 400,
+                                   "'storyboard' must be an object with a non-empty 'scenes' list",
+                                   expected={"scenes": [{"prompt": "..."}]})
+        bad = [i for i, s in enumerate(scenes)
+               if not isinstance(s, dict) or not isinstance(s.get("prompt"), str)
+               or not s["prompt"].strip()]
+        if bad:
+            return send_error_json(handler, 400,
+                                   f"scene(s) {bad} have no 'prompt' string",
+                                   expected={"scenes": [{"prompt": "..."}]})
         return supplied
     concept = body.get("concept")
     if not isinstance(concept, str) or not concept.strip():
@@ -88,6 +101,18 @@ class handler(BaseHTTPRequestHandler):
         detail = model_detail(model) if model else None
         if model and not detail:
             return send_error_json(self, 400, f"Unknown model '{model}'")
+        # This layer writes video requests. Handed an image or chat endpoint it
+        # would still produce a plausible-looking job — a prompt, a path, a body —
+        # for an endpoint that cannot run it, which is the exact failure this tool
+        # exists to catch. So it refuses, and says which kind it was given.
+        if detail and detail.get("kind") != "video":
+            return send_error_json(
+                self, 400,
+                f"'{model}' is a {detail.get('kind')} endpoint ({detail.get('endpoint')}) — "
+                "this layer writes video requests, so there is nothing to build. "
+                "Pick a video endpoint, or use Preflight/Improve for this one.",
+                kind=detail.get("kind"), video_models=[
+                    m["slug"] for m in model_list() if m.get("kind") == "video"])
         references = body.get("references")
         ref_set = build_reference_set(references, detail) if references else None
         images = (ref_set or {}).get("images")
@@ -100,6 +125,14 @@ class handler(BaseHTTPRequestHandler):
         detail = detail or (model_detail(model) if isinstance(model, str) and model else None)
         if model and not detail:
             return send_error_json(self, 400, f"Unknown model '{model}'")
+        # The storyboard can name the endpoint too, so the kind is checked again
+        # here rather than only on the body's own field.
+        if detail and detail.get("kind") != "video":
+            return send_error_json(
+                self, 400,
+                f"'{model}' is a {detail.get('kind')} endpoint ({detail.get('endpoint')}) — "
+                "this layer writes video requests, so there is nothing to build.",
+                kind=detail.get("kind"))
 
         plan = build_plan(storyboard, detail, references=images)
         if ref_set:

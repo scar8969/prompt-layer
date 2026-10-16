@@ -68,6 +68,24 @@ def _beats(value):
     return out or None
 
 
+def _seconds(handler, value, field):
+    """A clip length the caller sent, or None. A non-number is refused, not cast."""
+    if value is None or value == "":
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        send_error_json(handler, 400, f"Field '{field}' must be a number of seconds")
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        send_error_json(handler, 400, f"Field '{field}' must be a number of seconds")
+        return None
+    if not 0 < number <= 600:
+        send_error_json(handler, 400, f"Field '{field}' must be between 0 and 600 seconds")
+        return None
+    return number
+
+
 class handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
         send_json(self, 200, {
@@ -90,9 +108,22 @@ class handler(BaseHTTPRequestHandler):
             return send_error_json(self, 400, f"Unknown action '{action}'",
                                    available=["plan", "scenes"])
         model = body.get("model")
-        detail = model_detail(model) if isinstance(model, str) and model else None
+        if model is not None and not isinstance(model, str):
+            return send_error_json(self, 400, "Field 'model' must be a string")
+        detail = model_detail(model) if model else None
         if model and not detail:
             return send_error_json(self, 400, f"Unknown model '{model}'")
+        # This is the video planner: its facets are camera moves, clip length,
+        # dialogue and sound. Asked about an image or chat endpoint it would still
+        # answer with questions and a scene, which is a storyboard for something
+        # the endpoint cannot make. So it refuses instead of inventing one.
+        if detail and detail.get("kind") != "video":
+            return send_error_json(
+                self, 400,
+                f"'{model}' is a {detail.get('kind')} endpoint ({detail.get('endpoint')}) — "
+                "this planner builds video scenes, so it does not apply. "
+                "Pick a video endpoint, or use Preflight/Improve for this one.",
+                kind=detail.get("kind"))
 
         if action == "plan":
             answers = body.get("answers")
@@ -116,14 +147,19 @@ class handler(BaseHTTPRequestHandler):
         if answers is not None and not isinstance(answers, dict):
             return send_error_json(self, 400, "Field 'answers' must be an object")
         references = build_reference_set(body.get("references"), detail) if body.get("references") else None
+        total_seconds = _seconds(self, body.get("total_seconds"), "total_seconds")
+        scene_seconds = _seconds(self, body.get("scene_seconds"), "scene_seconds")
+        if (body.get("total_seconds") not in (None, "") and total_seconds is None) or \
+           (body.get("scene_seconds") not in (None, "") and scene_seconds is None):
+            return
         data = build_scenes(
             concept,
             model=model,
             model_detail=detail,
             design=design,
             beats=_beats(body.get("beats")),
-            total_seconds=body.get("total_seconds"),
-            scene_seconds=body.get("scene_seconds"),
+            total_seconds=total_seconds,
+            scene_seconds=scene_seconds,
             aspect=body.get("aspect"),
             references=(references or {}).get("images"),
             answers=answers,

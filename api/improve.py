@@ -124,6 +124,19 @@ class handler(BaseHTTPRequestHandler):
         result["model"] = model
         result["image"] = image
         result["reference_notes"] = reference_notes
+        # The lint's rules are published in the video guides, because that is where
+        # they are published. On an image endpoint they are still sound prompt
+        # advice, but they are not that endpoint's own rules, so say so here rather
+        # than leaving the finding's source to imply otherwise.
+        if (detail or {}).get("kind") == "image":
+            result["lint_note"] = {
+                "id": "lint_from_video_guides",
+                "detail": "These checks come from the video prompt guides (Sora, Veo, Wan) — "
+                          "they are the only place these rules are published. Read them as "
+                          "prompt-writing advice for this image endpoint, not as rules it "
+                          "documents. The layers above are this endpoint's own.",
+                "source": "Sora 2 Prompting Guide ([OI] cookbook) — developers.openai.com/cookbook/examples/sora/sora2_prompting_guide",
+            }
         send_json(self, 200, {"success": True, "data": result})
 
     def do_OPTIONS(self) -> None:  # noqa: N802

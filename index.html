@@ -59,7 +59,7 @@
   <div class="flex items-start justify-between gap-4 mb-5">
     <div>
       <h1 class="text-2xl font-semibold tracking-tight">Prompt Layer</h1>
-      <p class="text-sm text-[#77717A] max-w-2xl mt-1">Every video and chat endpoint rewrites, expands, screens or pads your prompt before the model runs — and none of it is visible in the UI. Pick a model, paste your prompt, and see the exact payload, every parameter the provider fills in for you, and the switch that turns each one off. Every claim links to its source.</p>
+      <p class="text-sm text-[#77717A] max-w-2xl mt-1">Every hosted image, video and chat endpoint rewrites, expands, screens or pads your prompt before the model runs — and none of it is visible in the UI. Pick a model, paste your prompt, and see the exact payload, every parameter the provider fills in for you, and the switch that turns each one off. Every claim links to its source.</p>
     </div>
   </div>
 
@@ -237,6 +237,7 @@
 
       <div id="iFindBox" class="hidden bg-white border border-black/10 rounded-card p-5">
         <div class="text-xs font-semibold uppercase tracking-wider text-[#77717A] mb-3">What limits this output</div>
+        <div id="iLintNote" class="hidden text-[11.5px] text-[#4c4546] mb-3 border-l-2 border-[#E6E2E4] pl-3"></div>
         <div id="iFindings" class="space-y-2"></div>
       </div>
 
@@ -273,7 +274,7 @@
       </label>
 
       <button id="runCompile" class="bg-black text-white text-sm font-medium px-4 py-2.5 rounded-card">Compile</button>
-      <p class="text-[11px] text-[#77717A] mt-3">The expander prompts are the verbatim ones shipped by Wan, HunyuanVideo and Kandinsky — the same instructions those platforms run internally. With dry run off they execute through the gateway.</p>
+      <p class="text-[11px] text-[#77717A] mt-3">The expander prompts are the verbatim ones shipped by Wan, HunyuanVideo and Kandinsky — the same instructions those platforms run internally. The expander is its own model: this tab does not use the endpoint picked at the top. With dry run off it executes through the gateway.</p>
     </div>
 
     <div class="space-y-4">
@@ -457,7 +458,8 @@
         : `<span class="text-[#8A5A00]">Dry run only.</span> ${generationGate.reason}`;
     }
     $('style').innerHTML = styles.map(s => `<option value="${s.id}">${s.label}</option>`).join('');
-    $('styleNote').textContent = styles[0] ? ('origin: ' + styles[0].origin) : '';
+    $('style').addEventListener('change', renderStyleNote);
+    renderStyleNote();
     await onModel();
     // The model sets are per-browser, so they can only be drawn once the
     // pickers have their options. Restore whichever one you last switched to.
@@ -892,10 +894,14 @@
     $('iScoreAfter').style.color = d > 0 ? '#0a7d33' : d < 0 ? '#B42318' : '';
     $('iScoreNote').textContent = data.before.score_note + (d !== 0 ? ` Merge moved it ${d > 0 ? '+' : ''}${d}.` : '');
     const c = data.before.counts;
-    $('iCounts').textContent = `${c.error} error(s) · ${c.warn} warning(s) · ${c.info} note(s) on what you wrote.`;
+    $('iCounts').textContent = `${plural(c.error, 'error')} · ${plural(c.warn, 'warning')} · ${plural(c.info, 'note')} on what you wrote.`;
     show('iScoreBox');
 
     $('iFindings').innerHTML = renderFindings(data.before.findings);
+    // Where the rules come from, when that is not the model you are pointing at.
+    const lintNote = data.lint_note;
+    $('iLintNote').textContent = lintNote ? lintNote.detail : '';
+    $('iLintNote').classList.toggle('hidden', !lintNote);
     document.querySelectorAll('[data-toggle]').forEach(b => b.onclick = () => $('find' + b.dataset.toggle).classList.toggle('open'));
     show('iFindBox');
 
@@ -969,7 +975,10 @@
 
   function esc(value) {
     return String(value == null ? '' : value)
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      // Quotes too: this is used inside attribute values, where a bare quote
+      // ends the attribute. Text nodes are unaffected.
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
 
   function videoDesign() {
@@ -1207,9 +1216,36 @@
     await showPlan();
   }
 
+  // The expander is not the endpoint you picked — these are the system prompts
+  // shipped by Wan, HunyuanVideo and Kandinsky — so the note follows the select
+  // rather than always describing whichever one happens to be first.
+  function renderStyleNote() {
+    const picked = styles.find(s => s.id === $('style').value) || styles[0];
+    $('styleNote').textContent = picked ? (picked.origin + ' · ' + picked.language) : '';
+  }
+
+  // "1 scene", not "1 scene(s)": the count is read, so it should read right.
+  function plural(n, word) {
+    return `${n} ${word}${n === 1 ? '' : 's'}`;
+  }
+
+  // An endpoint publishes its clip length in its own spelling — "8s" on veo3-fast,
+  // "6" on hailuo — so the unit is only added when the value does not carry one.
+  function secs(value) {
+    if (value === null || value === undefined || value === '') return 'unknown';
+    const text = String(value);
+    return /^\d+(\.\d+)?$/.test(text) ? text + 's' : text;
+  }
+
   function renderScenes(data) {
     const totals = data.totals || {};
-    $('vTotals').innerHTML = `${totals.clips} scene(s) · ${totals.per_clip || '?'}s each · ${totals.seconds || 0}s total`;
+    // A length that is not documented is unknown, not zero: saying "0s total" for
+    // a storyboard whose endpoint publishes no length would be a false number.
+    const perClip = secs(totals.per_clip);
+    const total = (totals.seconds || totals.seconds === 0) ? `${totals.seconds}s` : 'unknown';
+    const documented = (totals.documented_lengths || []).map(secs).join('/');
+    $('vTotals').innerHTML = `${plural(totals.clips, 'scene')} · ${perClip} each · ${total} total`
+      + (documented ? ` · this endpoint documents ${documented}` : '');
     $('vScenes').innerHTML = (data.scenes || []).map(s => {
       const added = (s.added || []).map(a => `<span class="mono">${esc(a.element)}=${esc(a.value)}</span>`).join(' · ');
       const cleaned = s.cleaned && s.cleaned.changes.length
@@ -1220,7 +1256,7 @@
         ? `<div class="text-[11px] text-[#4c4546] mt-1">uses ${s.references.map(r => esc(r.role) + ' (image ' + r.index + ')').join(', ')}</div>` : '';
       return `<div class="layer">
         <div class="flex items-center justify-between gap-2 flex-wrap">
-          <div class="text-[13px] font-medium">${esc(s.id)} · ${esc(s.seconds)}s</div>
+          <div class="text-[13px] font-medium">${esc(s.id)} · ${esc(secs(s.seconds))}</div>
           <div class="text-[11px] text-[#77717A]">score ${s.score} · ${Object.entries(s.params || {}).map(([k, v]) => k + '=' + v).join(' ') || 'no parameters'}</div>
         </div>
         <div class="text-[11.5px] text-[#77717A] mt-0.5">${esc(s.title)}</div>
@@ -1362,8 +1398,9 @@
   });
 
   // ------------------------------ model sets ------------------------------
-  // A model set is the two pickers remembered under a name: which endpoint
-  // Preflight/Improve asks about, and which endpoint Video builds requests for.
+  // A model set is the endpoints you are working with remembered under a name:
+  // which one Preflight/Improve asks about, which one Video builds requests for,
+  // and which one the Video conversation is held for.
   // It lives in this browser (localStorage) and is never uploaded — the server
   // has no idea it exists.
   //

@@ -431,14 +431,26 @@ def _reply(found: Dict[str, Any], blocking: List[str], beat_count: int,
     return head
 
 
+def _numeric_option(option: str) -> Optional[float]:
+    """The seconds a documented value names, or None.
+
+    Endpoints publish clip lengths in their own units — sora-2 as bare numbers
+    ("4", "8"), veo3-fast as "8s", hailuo as "6". All three mean seconds; only the
+    spelling differs, so the unit is read rather than treated as unparseable.
+    """
+    match = re.match(r"^\s*(\d+(?:\.\d+)?)\s*(s|sec|secs|second|seconds)?\s*$", str(option), re.I)
+    if not match:
+        return None
+    return float(match.group(1))
+
+
 def _snap_seconds(target: float, options: List[str], default: Optional[str]) -> Dict[str, Any]:
     """Snap a wanted clip length to the lengths the endpoint documents."""
     numeric = []
     for option in options:
-        try:
-            numeric.append((float(option), option))
-        except ValueError:
-            continue
+        value = _numeric_option(option)
+        if value is not None:
+            numeric.append((value, option))
     if not numeric:
         return {"seconds": None, "asked": target, "options": [], "note": "no documented lengths"}
     exact = [o for value, o in numeric if abs(value - target) < 0.01]
@@ -582,8 +594,9 @@ def build_scenes(concept: str,
             target = total_seconds / len(beats)
         elif stated:
             target = float(stated[0])
-        elif str(default_seconds or "").replace(".", "", 1).isdigit():
-            target = float(default_seconds)
+        elif _numeric_option(default_seconds) is not None:
+            # The endpoint's own default length, in whatever unit it publishes.
+            target = _numeric_option(default_seconds)
         else:
             target = 4.0
     else:
@@ -688,7 +701,12 @@ def build_scenes(concept: str,
             "evidence": first.get("evidence"),
         })
 
-    total = sum(float(s["seconds"] or 0) for s in scenes)
+    # A total is only a total when every clip's length is known: summing the known
+    # ones and reporting that as the length of the video would be a claim the
+    # storyboard cannot support. The length is the endpoint's own value, which may
+    # carry a unit ("8s"), so it is read the same way the snap reads it.
+    lengths = [_numeric_option(s.get("seconds")) for s in scenes]
+    total = sum(lengths) if scenes and all(v is not None for v in lengths) else None
     return {
         "concept": concept,
         "model": model,

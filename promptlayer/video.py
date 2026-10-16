@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import urllib.error
 import urllib.request
 from typing import Any, Dict, List, Optional
@@ -48,6 +49,14 @@ def generation_gate() -> Dict[str, Any]:
                    if opt_in and url and key else
                    "dry run only: " + ", ".join(missing) + " not set"),
     }
+
+
+def _length_label(seconds: Any) -> str:
+    """The clip length as the endpoint publishes it, without doubling the unit."""
+    if seconds in (None, ""):
+        return "?"
+    text = str(seconds)
+    return text if re.search(r"[a-z]", text, re.I) else text + "s"
 
 
 def _image_placeholder(reference: Dict[str, Any], image: Optional[Dict[str, Any]]) -> str:
@@ -78,18 +87,24 @@ def build_plan(storyboard: Dict[str, Any],
     """One job per scene, with the request that scene becomes."""
     detail = model_detail or {}
     ref_conf = detail.get("reference") or {}
-    params = detail.get("params") or {}
     images = {i.get("index"): i for i in (references or [])}
     route = _route(detail)
     jobs: List[Dict[str, Any]] = []
 
     for scene in storyboard.get("scenes") or []:
-        body: Dict[str, Any] = {"prompt": scene["prompt"]}
+        if not isinstance(scene, dict):
+            continue
+        body: Dict[str, Any] = {"prompt": scene.get("prompt") or ""}
         if scene.get("negative"):
             body["negative_prompt"] = scene["negative"]
         for key, value in (scene.get("params") or {}).items():
             if key != "negative_prompt":
                 body[key] = value
+        # Remember the fields written for a reference: the image count is derived
+        # from what actually went into the body, not by subtracting the documented
+        # parameters — an edit endpoint documents its image field *as* a parameter,
+        # so subtraction would report "no image" on the one endpoint that needs one.
+        image_fields: List[str] = []
         for ref in scene.get("references") or []:
             field = str(ref_conf.get("field") or "image")
             # An endpoint may document two fields ("first_frame_image (and
@@ -102,9 +117,11 @@ def build_plan(storyboard: Dict[str, Any],
             elif "(" in field:
                 name = field.split("(")[0].strip()
             body[name] = _image_placeholder(ref, images.get(ref.get("index")))
+            if name not in image_fields:
+                image_fields.append(name)
         jobs.append({
-            "index": scene["index"],
-            "scene": scene["id"],
+            "index": scene.get("index"),
+            "scene": scene.get("id"),
             "title": scene.get("title"),
             "seconds": scene.get("seconds"),
             "provider": detail.get("provider"),
@@ -113,11 +130,10 @@ def build_plan(storyboard: Dict[str, Any],
             "method": route["method"],
             "path": route["path"],
             "body": body,
-            "image_fields": [k for k in body if k not in
-                             ("prompt", "negative_prompt") and k not in params],
+            "image_fields": image_fields,
             "score": scene.get("score"),
             "note": (f"{len(body.get('prompt', '').split())} words · "
-                     f"{scene.get('seconds') or '?'}s"),
+                     f"{_length_label(scene.get('seconds'))}"),
         })
 
     totals = storyboard.get("totals") or {}

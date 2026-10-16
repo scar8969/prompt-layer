@@ -83,7 +83,7 @@ def test_an_image_prompt_is_preflighted_against_the_image_endpoint():
     result = build_preflight("flux-2", "a red sneaker on wet asphalt, product shot")
     assert result["unknown_model"] is False
     assert [layer["id"] for layer in result["layers"]] == \
-        ["expand.prompt_expansion", "screen.safety_checker", "pin.image_size"]
+        ["expand.prompt_expansion", "pin.seed", "screen.safety_checker", "pin.image_size"]
     assert result["full_control_patch"] == {"enable_prompt_expansion": False,
                                             "enable_safety_checker": False}
     # A layer that is off by default is reported as off, not counted as active.

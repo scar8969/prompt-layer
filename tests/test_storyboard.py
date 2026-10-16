@@ -456,3 +456,39 @@ def test_the_shape_question_asks_about_the_endpoints_own_size_parameter():
     veo = aspect_of("veo3-fast")
     assert veo["options"] == ["16:9"]
     assert veo["options_from"]["parameter"] == "aspect_ratio"
+
+
+# ------------------------------------------------------ lengths, read and totalled
+def test_a_length_documented_with_a_unit_is_read_as_seconds():
+    """"8s" is eight seconds, not an unreadable value: an endpoint that publishes
+    its lengths with a unit was being treated as documenting none."""
+    result = build_scenes("a kite over a field", model="veo3-fast",
+                          model_detail=model_detail("veo3-fast"))
+    assert result["scenes"][0]["seconds"] == "8s"
+    assert result["totals"]["per_clip"] == "8s"
+    assert result["totals"]["documented_lengths"] == ["8s"]
+    assert result["totals"]["seconds"] == 8.0
+    # The endpoint's own value is kept verbatim in the scene.
+    assert result["scenes"][0]["params"].get("duration") == "8s"
+
+
+def test_a_total_is_null_when_a_clip_length_is_unknown():
+    """Summing the known clips and calling it the video's length is a claim the
+    storyboard cannot support."""
+    result = build_scenes("a kite over a field", model="veo3-fast",
+                          model_detail=model_detail("veo3-fast"),
+                          scene_seconds=4.0)
+    # 4s snapped down to the documented 8s, so the length is known here...
+    assert result["totals"]["seconds"] == 8.0
+    unknown = build_scenes("a kite over a field", model="veo3-fast",
+                           model_detail={"params": {}})
+    assert unknown["totals"]["per_clip"] is None
+    assert unknown["totals"]["seconds"] is None
+
+
+def test_a_length_asked_for_in_prose_is_still_snapped_to_the_endpoints_own():
+    result = build_scenes("a kite over a field for about 20 seconds", model="sora-2",
+                          model_detail=model_detail("sora-2"))
+    scene = result["scenes"][0]
+    assert scene["seconds"] in ("4", "8", "12", "16", "20")
+    assert scene["seconds"] in (result["totals"]["documented_lengths"] or [])

@@ -57,14 +57,16 @@
       "kind": "image",
       "display": "FLUX.2 (fal)",
       "params": {
+        "enable_prompt_expansion": { "default": false },
+        "num_inference_steps": { "default": 28 },
+        "output_format": { "default": "png", "options": ["jpeg", "png", "webp"] },
+        "enable_safety_checker": { "default": true },
         "image_size": { "default": "landscape_4_3" },
         "num_images": { "default": 1 },
-        "output_format": { "default": "png", "options": ["jpeg", "png", "webp"] },
         "guidance_scale": { "default": 2.5 },
-        "num_inference_steps": { "default": 28 },
-        "acceleration": { "default": "regular", "options": ["none", "regular", "high"] },
-        "enable_prompt_expansion": { "default": false },
-        "enable_safety_checker": { "default": true }
+        "seed": { "default": null },
+        "sync_mode": { "default": false },
+        "acceleration": { "default": "regular", "options": ["none", "regular", "high"] }
       },
       "layers": [
         {
@@ -75,6 +77,15 @@
           "disable_with": null,
           "source": "fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/flux-2",
           "evidence": "enable_prompt_expansion (boolean, default false): \"If set to true, the prompt will be expanded for better results.\""
+        },
+        {
+          "id": "pin.seed",
+          "kind": "pin",
+          "active": true,
+          "detail": "No seed is sent unless you send one, so the same prompt does not give the same image twice. Pin a seed when you want a result you can reproduce.",
+          "disable_with": null,
+          "source": "fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/flux-2",
+          "evidence": "seed (anyOf, default none): \"The seed to use for the generation. If not provided, a random seed will be used.\""
         },
         {
           "id": "screen.safety_checker",
@@ -108,9 +119,11 @@
       "kind": "image",
       "display": "FLUX.2 Pro (fal)",
       "params": {
-        "image_size": { "default": "landscape_4_3" },
         "output_format": { "default": "jpeg", "options": ["jpeg", "png"] },
+        "sync_mode": { "default": false },
         "safety_tolerance": { "default": "2", "options": ["1", "2", "3", "4", "5"] },
+        "image_size": { "default": "landscape_4_3" },
+        "seed": { "default": null },
         "enable_safety_checker": { "default": true }
       },
       "layers": [
@@ -139,7 +152,7 @@
           "detail": "The frame size is set by the parameter, not by your prose.",
           "disable_with": null,
           "source": "fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/flux-2-pro",
-          "evidence": "image_size (default \"landscape_4_3\")"
+          "evidence": "image_size (default \"landscape_4_3\"): \"The size of the generated image.\""
         }
       ],
       "accepts_image": false,
@@ -155,10 +168,12 @@
       "kind": "image",
       "display": "Seedream 4.0 (ByteDance)",
       "params": {
-        "image_size": { "default": { "width": 2048, "height": 2048 } },
         "num_images": { "default": 1 },
+        "image_size": { "default": { "width": 2048, "height": 2048 } },
+        "sync_mode": { "default": false },
         "max_images": { "default": 1 },
         "enhance_prompt_mode": { "default": "standard", "options": ["standard", "fast"] },
+        "seed": { "default": null },
         "enable_safety_checker": { "default": true }
       },
       "layers": [
@@ -204,13 +219,16 @@
       "display": "Qwen-Image (fal)",
       "params": {
         "image_size": { "default": "landscape_4_3" },
-        "num_images": { "default": 1 },
         "num_inference_steps": { "default": 30 },
-        "guidance_scale": { "default": 2.5 },
         "acceleration": { "default": "none", "options": ["none", "regular", "high"] },
+        "loras": { "default": [] },
         "output_format": { "default": "png", "options": ["jpeg", "png"] },
-        "use_turbo": { "default": false },
+        "seed": { "default": null },
         "negative_prompt": { "default": " " },
+        "num_images": { "default": 1 },
+        "use_turbo": { "default": false },
+        "sync_mode": { "default": false },
+        "guidance_scale": { "default": 2.5 },
         "enable_safety_checker": { "default": true }
       },
       "layers": [
@@ -231,6 +249,15 @@
           "disable_with": null,
           "source": "fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/qwen-image",
           "evidence": "use_turbo (boolean, default false): \"Enable turbo mode for faster generation with high quality. When enabled, uses optimized settings (10 steps, CFG=1.2).\""
+        },
+        {
+          "id": "pin.seed",
+          "kind": "pin",
+          "active": true,
+          "detail": "Same seed, same prompt, same version: the same image. This is the endpoint's own promise of reproducibility, and nothing is pinned unless you pin it.",
+          "disable_with": null,
+          "source": "fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/qwen-image",
+          "evidence": "seed (anyOf, default none): \"The same seed and the same prompt given to the same version of the model will output the same image every time.\""
         },
         {
           "id": "screen.safety_checker",
@@ -255,11 +282,13 @@
       "kind": "image",
       "display": "Nano Banana (Gemini image)",
       "params": {
-        "aspect_ratio": { "default": "1:1", "options": ["21:9", "16:9", "3:2", "4:3", "5:4", "1:1", "4:5", "3:4", "2:3", "9:16"] },
-        "num_images": { "default": 1 },
         "output_format": { "default": "png", "options": ["jpeg", "png", "webp"] },
-        "safety_tolerance": { "default": "4", "options": ["1", "2", "3", "4", "5", "6"] },
-        "limit_generations": { "default": true }
+        "seed": { "default": null },
+        "num_images": { "default": 1 },
+        "limit_generations": { "default": true },
+        "sync_mode": { "default": false },
+        "aspect_ratio": { "default": "1:1", "options": ["21:9", "16:9", "3:2", "4:3", "5:4", "1:1", "4:5", "3:4", "2:3", "9:16"] },
+        "safety_tolerance": { "default": "4", "options": ["1", "2", "3", "4", "5", "6"] }
       },
       "layers": [
         {
@@ -303,15 +332,17 @@
       "kind": "image",
       "display": "FLUX.2 Edit (fal)",
       "params": {
-        "image_urls": { "default": null },
         "image_size": { "default": null },
-        "num_images": { "default": 1 },
-        "output_format": { "default": "png", "options": ["jpeg", "png"] },
-        "guidance_scale": { "default": 2.5 },
-        "num_inference_steps": { "default": 28 },
+        "seed": { "default": null },
         "acceleration": { "default": "regular", "options": ["none", "regular", "high"] },
+        "sync_mode": { "default": false },
+        "image_urls": { "default": null },
+        "output_format": { "default": "png", "options": ["jpeg", "png", "webp"] },
         "enable_prompt_expansion": { "default": false },
-        "enable_safety_checker": { "default": true }
+        "num_inference_steps": { "default": 28 },
+        "enable_safety_checker": { "default": true },
+        "num_images": { "default": 1 },
+        "guidance_scale": { "default": 2.5 }
       },
       "layers": [
         {
@@ -322,6 +353,15 @@
           "disable_with": null,
           "source": "fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/flux-2/edit",
           "evidence": "image_urls (array): \"The URLs of the images for editing. A maximum of 4 images are allowed, if more are provided, only the first 4 will be used.\""
+        },
+        {
+          "id": "pin.seed",
+          "kind": "pin",
+          "active": true,
+          "detail": "No seed is sent unless you send one, so the same edit does not come back the same twice. Pin a seed when you want to reproduce an edit you liked.",
+          "disable_with": null,
+          "source": "fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/flux-2/edit",
+          "evidence": "seed (anyOf, default none): \"The seed to use for the generation. If not provided, a random seed will be used.\""
         },
         {
           "id": "expand.prompt_expansion",

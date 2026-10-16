@@ -243,7 +243,8 @@ _, ip = call("POST", "/api/preflight", {"model": "flux-2", "prompt": "a red snea
 ipd = ip.get("data") or {}
 ok("an image prompt is preflighted against the image endpoint",
    [l["id"] for l in ipd.get("layers") or []] ==
-   ["expand.prompt_expansion", "screen.safety_checker", "pin.image_size"], ipd.get("layers"))
+   ["expand.prompt_expansion", "pin.seed", "screen.safety_checker", "pin.image_size"],
+   ipd.get("layers"))
 ok("the off-switches are the image endpoint's own parameters",
    ipd.get("full_control_patch") == {"enable_prompt_expansion": False,
                                      "enable_safety_checker": False}, ipd.get("full_control_patch"))
@@ -291,6 +292,73 @@ _, mix = call("POST", "/api/storyboard", {"action": "scenes", "concept": CONCEPT
 mix_scene = ((mix.get("data") or {}).get("scenes") or [{}])[0]
 ok("the scenes are built for the model the scenes were asked for",
    (mix_scene.get("params") or {}).get("duration") == "6", mix_scene.get("params"))
+
+print("== the endpoint has to be able to do the job ==")
+# The video layer writes video requests; handed an image endpoint it used to build
+# a job for it anyway (prompt, /v1/videos, a video-guide note). It refuses now.
+for slug, kind in (("flux-2", "image"), ("gpt-4o-mini", "chat")):
+    code, r = call("POST", "/api/video", {"action": "plan", "concept": "a paper crane",
+                                          "model": slug})
+    ok(f"the video layer refuses the {kind} endpoint '{slug}'",
+       code == 400 and kind in (r.get("message") or ""), (code, r.get("message")))
+    code, r = call("POST", "/api/storyboard", {"action": "plan", "concept": "a paper crane",
+                                               "model": slug})
+    ok(f"and the planner refuses it too",
+       code == 400 and kind in (r.get("message") or ""), (code, r.get("message")))
+code, r = call("POST", "/api/video", {"action": "plan", "concept": "a paper crane",
+                                      "model": "veo3-fast"})
+ok("while a video endpoint still builds its job",
+   code == 200 and (r.get("data") or {}).get("jobs"), (code, r.get("data")))
+
+print("== a bad body is answered, not crashed ==")
+for scenes in ([{"nope": 1}], [{}], "not-a-list", [{"prompt": None}], []):
+    code, r = call("POST", "/api/video", {"action": "plan", "storyboard": {"scenes": scenes}})
+    ok(f"a storyboard whose scenes are {json.dumps(scenes)[:22]} -> 400",
+       code == 400, (code, r))
+for field in ("scene_seconds", "total_seconds"):
+    code, r = call("POST", "/api/storyboard", {"action": "scenes", "concept": "a kite",
+                                               "model": "sora-2", field: "abc"})
+    ok(f"a non-numeric '{field}' -> 400 rather than a crash", code == 400, (code, r))
+
+print("== lengths the endpoint publishes, and totals that are not guessed ==")
+_, veo = call("POST", "/api/storyboard", {"action": "scenes", "concept": "a kite over a field",
+                                          "model": "veo3-fast"})
+vd = veo.get("data") or {}
+ok("a length published as '8s' is read as eight seconds, not as none",
+   (vd.get("scenes") or [{}])[0].get("seconds") == "8s"
+   and (vd.get("totals") or {}).get("documented_lengths") == ["8s"],
+   ((vd.get("scenes") or [{}])[0].get("seconds"), (vd.get("totals") or {}).get("documented_lengths")))
+ok("and the total is the sum of the documented lengths",
+   (vd.get("totals") or {}).get("seconds") == 8.0, (vd.get("totals") or {}).get("seconds"))
+_, nos = call("POST", "/api/storyboard", {"action": "scenes", "concept": "a kite over a field",
+                                          "model": "sora-2"})
+ok("an endpoint that documents a length gets a known total, not a zero",
+   ((nos.get("data") or {}).get("totals") or {}).get("seconds") not in (0, None),
+   ((nos.get("data") or {}).get("totals") or {}).get("seconds"))
+
+print("== the image an edit endpoint takes is counted ==")
+_, ed2 = call("POST", "/api/storyboard", {"action": "scenes", "concept": "make the jacket red",
+    "model": "hailuo-02-i2v",
+    "references": [{"name": "a.png", "role": "first_frame", "width": 1280, "height": 720,
+                    "type": "image/png", "bytes": 100}]})
+_, edplan = call("POST", "/api/video", {"action": "plan", "storyboard": (ed2.get("data") or {}),
+    "model": "hailuo-02-i2v",
+    "references": [{"name": "a.png", "role": "first_frame", "width": 1280, "height": 720,
+                    "type": "image/png", "bytes": 100}]})
+epd = edplan.get("data") or {}
+ok("a scene with a reference reports the field it wrote",
+   ((epd.get("jobs") or [{}])[0].get("image_fields") or []) != []
+   and (epd.get("totals") or {}).get("with_image") == 1,
+   ((epd.get("jobs") or [{}])[0].get("image_fields"), (epd.get("totals") or {}).get("with_image")))
+
+print("== the lint says where its rules come from ==")
+_, imp2 = call("POST", "/api/improve", {"model": "flux-2", "prompt": "a beautiful 8k photo"})
+note = ((imp2.get("data") or {}).get("lint_note") or {})
+ok("an image endpoint's findings carry the note that the rules are video-guide advice",
+   note.get("id") == "lint_from_video_guides" and "advice" in (note.get("detail") or ""), note)
+_, imp3 = call("POST", "/api/improve", {"model": "hailuo-02-standard", "prompt": "a beautiful 8k photo"})
+ok("and a video endpoint's do not, because the rules are its own",
+   "lint_note" not in (imp3.get("data") or {}), list(imp3.get("data") or {}))
 
 print()
 print(f"{checks - len(fails)}/{checks} checks passed")
