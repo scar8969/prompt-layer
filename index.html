@@ -63,6 +63,7 @@
   <div class="flex gap-2 mb-4">
     <button class="tabbtn active text-sm font-medium px-3.5 py-2 rounded-card border border-black/10" data-tab="preflight">Preflight</button>
     <button class="tabbtn text-sm font-medium px-3.5 py-2 rounded-card border border-black/10" data-tab="improve">Improve</button>
+    <button class="tabbtn text-sm font-medium px-3.5 py-2 rounded-card border border-black/10" data-tab="video">Video</button>
     <button class="tabbtn text-sm font-medium px-3.5 py-2 rounded-card border border-black/10" data-tab="compile">Compile</button>
   </div>
 
@@ -265,6 +266,90 @@
       </div>
     </div>
   </section>
+
+  <!-- ============================ VIDEO ============================ -->
+  <section id="tab-video" class="hidden grid grid-cols-1 lg:grid-cols-2 gap-5">
+
+    <div class="space-y-4">
+      <div class="bg-white border border-black/10 rounded-card p-5">
+        <label class="block text-xs font-semibold uppercase tracking-wider text-[#77717A] mb-1.5">Video model</label>
+        <select id="vModel" class="w-full rounded-card border-black/15 text-sm mb-4"></select>
+
+        <label class="block text-xs font-semibold uppercase tracking-wider text-[#77717A] mb-1.5">Explain the scene — or the whole video</label>
+        <textarea id="vConcept" rows="6" class="w-full rounded-card border-black/15 text-sm mb-2" placeholder="A detective named Mara walks through a rain-soaked alley at night. Then she finds a glowing book in a doorway. Finally she runs across a neon bridge."></textarea>
+        <div id="vConceptNote" class="text-[11px] text-[#77717A] mb-3">Write it the way you would say it out loud. The planner reads what you actually wrote — it never fills a gap with a guess.</div>
+
+        <div class="flex flex-wrap gap-2">
+          <button id="vSend" class="bg-black text-white text-sm font-medium px-4 py-2.5 rounded-card">Read it</button>
+          <button id="vBuild" class="text-sm font-medium border border-black/10 px-4 py-2.5 rounded-card hover:border-black/30">Build the scenes</button>
+          <button id="vReset" class="text-sm font-medium border border-black/10 px-4 py-2.5 rounded-card hover:border-black/30">Start over</button>
+        </div>
+      </div>
+
+      <div id="vChatBox" class="hidden bg-white border border-black/10 rounded-card p-5">
+        <div class="text-xs font-semibold uppercase tracking-wider text-[#77717A] mb-3">What it read, and what is missing</div>
+        <div id="vReading" class="text-[13px] mb-3"></div>
+        <div id="vMissing" class="text-[12.5px] mb-3"></div>
+        <div id="vQuestions" class="space-y-3"></div>
+        <div id="vWarnings" class="space-y-2 mt-3"></div>
+      </div>
+
+      <details id="vRefBox" class="bg-white border border-black/10 rounded-card px-4 py-3">
+        <summary class="cursor-pointer text-[12.5px] font-medium">Reference images
+          <span class="text-[11px] text-[#77717A] font-normal" id="vRefNote">· measured in your browser, never uploaded</span></summary>
+        <div class="mt-3">
+          <input type="file" id="vImages" accept="image/png,image/jpeg,image/webp" multiple class="w-full text-xs mb-2">
+          <div id="vRefList" class="space-y-2 mb-2"></div>
+          <div id="vRefChecks" class="space-y-1.5 text-[11.5px]"></div>
+          <div id="vPaletteOut" class="text-[11.5px] mt-2"></div>
+        </div>
+      </details>
+
+      <details id="vDesignBox" class="bg-white border border-black/10 rounded-card px-4 py-3">
+        <summary class="cursor-pointer text-[12.5px] font-medium">Design elements
+          <span class="text-[11px] text-[#77717A] font-normal">· merged into every scene, never twice</span></summary>
+        <div class="mt-3">
+          <div class="grid grid-cols-2 gap-3 mb-3">
+            <div>
+              <label class="block text-[10.5px] font-semibold uppercase tracking-wider text-[#77717A] mb-1">Merge shape</label>
+              <select id="vTemplate" class="w-full rounded-card border-black/15 text-sm"></select>
+            </div>
+            <div>
+              <label class="block text-[10.5px] font-semibold uppercase tracking-wider text-[#77717A] mb-1">Palette anchors</label>
+              <input id="vPalette" class="w-full rounded-card border-black/15 text-sm mono" placeholder="amber, cream, walnut brown">
+            </div>
+          </div>
+          <label class="flex items-start gap-2 text-[12px] mb-3">
+            <input type="checkbox" id="vClean" checked class="mt-0.5 rounded border-black/20">
+            <span>Clean each scene — duration and resolution asked in prose become parameters, not words.</span>
+          </label>
+          <div id="vVocab" data-vocab="video" class="space-y-3"></div>
+        </div>
+      </details>
+    </div>
+
+    <div class="space-y-4">
+      <div id="vSceneBox" class="hidden bg-white border border-black/10 rounded-card p-5">
+        <div class="flex items-baseline justify-between mb-1">
+          <div class="text-xs font-semibold uppercase tracking-wider text-[#77717A]">Storyboard</div>
+          <div class="text-[12px]" id="vTotals"></div>
+        </div>
+        <div id="vScenes" class="space-y-3 mt-3"></div>
+        <div id="vContinuity" class="mt-4 pt-4 border-t border-black/5 text-[12px]"></div>
+        <div id="vNotes" class="mt-3 space-y-2"></div>
+        <button id="vCopyAll" class="mt-3 text-[11px] underline text-[#4c4546]">copy every prompt</button>
+      </div>
+
+      <div id="vPlanBox" class="hidden bg-white border border-black/10 rounded-card p-5">
+        <div class="flex items-center justify-between mb-2">
+          <div class="text-xs font-semibold uppercase tracking-wider text-[#77717A]">The requests this becomes</div>
+          <button id="vCopyPlan" class="text-[11px] underline text-[#4c4546]">copy</button>
+        </div>
+        <div id="vGate" class="text-[11.5px] mb-3"></div>
+        <div id="vJobs" class="space-y-3"></div>
+      </div>
+    </div>
+  </section>
 </div>
 
 <script>
@@ -273,6 +358,7 @@
   const $ = (id) => document.getElementById(id);
   let models = [], styles = [], detail = null, lastPayload = null;
   let design = { vocab: {}, templates: {} }, imageInfo = null;
+  let storyboardIndex = null, generationGate = null;
 
   // No accounts on this deployment: nothing to authenticate with.
   const authHeaders = () => ({});
@@ -315,13 +401,25 @@
     styles = res.expanders || [];
     design = res.design || { vocab: {}, templates: {} };
     presetsIndex = res.presets || null;
+    storyboardIndex = res.storyboard || null;
+    generationGate = res.generation || null;
     $('dsVersion').textContent = res.version || '';
     renderVocab();
     initPresets();
     $('iTemplate').innerHTML = Object.entries(design.templates || {}).map(([id, t]) =>
       `<option value="${id}">${t.label}</option>`).join('');
+    $('vTemplate').innerHTML = $('iTemplate').innerHTML;
     $('model').innerHTML = models.map(m =>
       `<option value="${m.slug}">${m.display} — ${m.provider}${m.active_layer_count ? ' · ' + m.active_layer_count + ' active layer(s)' : ''}</option>`).join('');
+    // The video tab only offers endpoints that make video.
+    $('vModel').innerHTML = models.filter(m => m.kind === 'video').map(m =>
+      `<option value="${m.slug}">${m.display} — ${m.provider}${m.accepts_image ? ' · takes an image' : ''}</option>`).join('')
+      || models.map(m => `<option value="${m.slug}">${m.display} — ${m.provider}</option>`).join('');
+    if (generationGate) {
+      $('vGate').innerHTML = generationGate.enabled
+        ? '<span class="text-[#0a7d33]">This deployment is allowed to generate.</span>'
+        : `<span class="text-[#8A5A00]">Dry run only.</span> ${generationGate.reason}`;
+    }
     $('style').innerHTML = styles.map(s => `<option value="${s.id}">${s.label}</option>`).join('');
     $('styleNote').textContent = styles[0] ? ('origin: ' + styles[0].origin) : '';
     await onModel();
@@ -473,9 +571,18 @@
   };
 
   function renderVocab() {
+    renderVocabInto($('vocab'), 'improve');
+    renderVocabInto($('vVocab'), 'video');
+  }
+
+  // One renderer, two panels: the Improve tab and the Video tab each keep their
+  // own design set, so a choice made for one prompt never leaks into the other.
+  function renderVocabInto(root, scope) {
+    if (!root) return;
+    root.dataset.vocab = scope;
     const groups = ['style', 'time_of_day', 'shot_size', 'camera_move', 'lens', 'light_source',
                     'light_quality', 'tone', 'composition', 'audio', 'negative'];
-    $('vocab').innerHTML = groups.map(key => {
+    root.innerHTML = groups.map(key => {
       const group = (design.vocab || {})[key];
       if (!group) return '';
       const single = SINGLE_SELECT.has(key);
@@ -494,10 +601,10 @@
         <div class="text-[10.5px] text-[#77717A] mt-2">source: ${group.source === 'wan_director' ? 'Wan 2.2 system prompt' : group.source === 'veo' ? 'Veo prompt guide' : group.source === 'sora' ? 'Sora 2 prompting guide' : group.source}</div>
       </details>`;
     }).join('');
-    document.querySelectorAll('.vchip').forEach(chip => chip.onclick = () => {
+    root.querySelectorAll('.vchip').forEach(chip => chip.onclick = () => {
       const single = chip.dataset.single === '1';
       if (single) {
-        document.querySelectorAll(`.vchip[data-key="${chip.dataset.key}"]`).forEach(other => {
+        root.querySelectorAll(`.vchip[data-key="${chip.dataset.key}"]`).forEach(other => {
           if (other !== chip) other.classList.remove('on');
         });
         chip.classList.toggle('on');
@@ -663,9 +770,10 @@
     });
   }
 
-  function collectSelections() {
+  function collectSelections(scope) {
+    const root = scope ? document.querySelector(`[data-vocab="${scope}"]`) : document;
     const out = {};
-    document.querySelectorAll('.vchip.on').forEach(chip => {
+    (root || document).querySelectorAll('.vchip.on').forEach(chip => {
       const key = chip.dataset.key, value = chip.dataset.value;
       if (chip.dataset.single === '1') out[key] = value;
       else (out[key] = out[key] || []).push(value);
@@ -676,6 +784,7 @@
   function clearDesign() {
     document.querySelectorAll('.vchip.on').forEach(c => c.classList.remove('on'));
     $('iPalette').value = '';
+    $('vPalette').value = '';
   }
 
   async function onImage(file) {
@@ -726,7 +835,7 @@
       data = await api('/improve', { method: 'POST', body: JSON.stringify({
         model: $('model').value,
         prompt,
-        selections: collectSelections(),
+        selections: collectSelections('improve'),
         palette: $('iPalette').value.trim() || undefined,
         template: $('iTemplate').value || 'inline',
         clean: $('iClean').checked,
@@ -777,15 +886,368 @@
     show('iResultBox');
   }
 
+  // ---------------------------------------------------------------- video
+  // The scene planner, and the requests it becomes.
+  //
+  // Two deterministic operations, no model calls anywhere in this file's video
+  // path: "Read it" is one chat turn over what you wrote (what was read, what is
+  // missing, and the next questions, each with the reason it matters and the
+  // source that says so), and "Build the scenes" splits the concept into beats
+  // and turns each beat into one prompt with that endpoint's own parameters.
+  //
+  // Nothing here generates video. The request panel is a dry run unless this
+  // deployment was explicitly allowed to spend (the gate line says which).
+  let answers = {}, refImages = [], lastStoryboard = null, beats = null;
+  const SINGLE_FACET = new Set(['camera_move', 'shot_size', 'lens', 'light_source',
+                                'time_of_day', 'tone', 'style', 'duration', 'aspect']);
+  const MULTI_FACET = new Set(['audio', 'negative']);
+
+  function facetById(id) {
+    return ((storyboardIndex || {}).facets || []).find(f => f.id === id) || null;
+  }
+
+  function esc(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function videoDesign() {
+    return {
+      selections: collectSelections('video'),
+      palette: $('vPalette').value.trim() || undefined,
+      template: $('vTemplate').value || 'inline',
+      clean: $('vClean').checked,
+    };
+  }
+
+  async function readConcept() {
+    const concept = $('vConcept').value.trim();
+    if (!concept) { $('vConcept').focus(); return; }
+    let data;
+    try {
+      data = await api('/storyboard', { method: 'POST', body: JSON.stringify({
+        action: 'plan', concept, answers, model: $('vModel').value,
+      }) });
+    } catch (e) { banner('The planner failed: ' + e.message); return; }
+    renderReading(data);
+    renderQuestions(data);
+    renderWarnings(data);
+    show('vChatBox');
+  }
+
+  function renderReading(data) {
+    const found = data.reading.found || {};
+    const ids = data.reading.ids || [];
+    if (!ids.length) {
+      $('vReading').innerHTML = '<span class="text-[#77717A]">Nothing readable yet — describe who or what, what happens, and where.</span>';
+    } else {
+      $('vReading').innerHTML = ids.map(id => {
+        const value = [].concat(found[id]).join(' · ');
+        const label = (facetById(id) || {}).label || id;
+        return `<div class="flex gap-2"><span class="text-[#77717A] min-w-[92px]">${esc(label)}</span>
+          <span class="mono text-[12px]">${esc(value)}</span></div>`;
+      }).join('');
+    }
+    const blocking = data.blocking_missing || [];
+    const missing = (data.missing || []).filter(id => !blocking.includes(id));
+    $('vMissing').innerHTML = data.ready
+      ? '<span class="text-[#0a7d33]">Nothing blocking left. Build the scenes when you are ready.</span>'
+      : `<span class="text-[#B42318]">Still missing: ${blocking.map(id => esc((facetById(id) || {}).label || id)).join(', ')}</span>`
+        + (missing.length ? `<div class="text-[11.5px] text-[#77717A] mt-1">Nice to have: ${missing.map(id => esc((facetById(id) || {}).label || id)).join(', ')}</div>` : '');
+    // The reply line is the planner talking; show it verbatim.
+    $('vMissing').insertAdjacentHTML('beforeend',
+      `<div class="text-[12.5px] text-[#4c4546] mt-2">${esc(data.reply)}</div>`);
+  }
+
+  function renderQuestions(data) {
+    const chosen = Object.entries(answers).filter(([, v]) => v && String(v).length);
+    const chosenRow = chosen.length
+      ? `<div class="flex flex-wrap gap-1.5 mb-1">${chosen.map(([k, v]) =>
+          `<button class="vchip on" data-unanswer="${esc(k)}">${esc((facetById(k) || {}).label || k)}: ${esc([].concat(v).join(', '))} ✕</button>`).join('')}</div>`
+      : '';
+    const cards = (data.questions || []).map((q, i) => {
+      const single = !MULTI_FACET.has(q.facet) && SINGLE_FACET.has(q.facet);
+      const opts = (q.options || []).map(o =>
+        `<button type="button" class="vchip" data-answer="${esc(q.facet)}" data-value="${esc(o)}" data-single="${single ? 1 : 0}">${esc(o)}</button>`).join('');
+      return `<div class="layer" id="vq${i}">
+        <div class="text-[13px] font-medium">${esc(q.question)}</div>
+        <div class="text-[11.5px] text-[#4c4546] mt-1">${esc(q.why)}</div>
+        ${opts ? `<div class="flex flex-wrap gap-1.5 mt-2">${opts}</div>` : ''}
+        <div class="flex gap-2 mt-2">
+          <input class="qfree flex-1 rounded border-black/15 text-[12px] mono" placeholder="or write it">
+          <button type="button" class="qsend text-[11.5px] border border-black/10 rounded px-2 hover:border-black/30">use</button>
+        </div>
+        <button data-toggle="${i}" class="mt-1">source &amp; evidence</button>
+        <div class="ev">${esc(q.source)}<br><br>${esc(q.evidence)}</div>
+      </div>`;
+    }).join('');
+    $('vQuestions').innerHTML = chosenRow + (cards ||
+      '<div class="text-[12.5px] text-[#77717A]">No questions — the concept already carries what this model needs.</div>');
+
+    document.querySelectorAll('#vQuestions [data-toggle]').forEach(b => b.onclick = () => $('vq' + b.dataset.toggle).classList.toggle('open'));
+    document.querySelectorAll('#vQuestions [data-answer]').forEach(b => b.onclick = () =>
+      setAnswer(b.dataset.answer, b.dataset.value, b.dataset.single === '1'));
+    document.querySelectorAll('#vQuestions [data-unanswer]').forEach(b => b.onclick = () => {
+      delete answers[b.dataset.unanswer];
+      readConcept();
+    });
+    document.querySelectorAll('#vQuestions .layer').forEach(card => {
+      const input = card.querySelector('.qfree');
+      const facet = card.querySelector('[data-answer]') ? card.querySelector('[data-answer]').dataset.answer : null;
+      const send = () => { if (input.value.trim() && facet) setAnswer(facet, input.value.trim(), true); };
+      card.querySelector('.qsend').onclick = send;
+      input.addEventListener('keydown', e => { if (e.key === 'Enter') send(); });
+    });
+  }
+
+  function setAnswer(facet, value, single) {
+    if (single || SINGLE_FACET.has(facet)) {
+      answers[facet] = value;
+    } else {
+      const list = [].concat(answers[facet] || []);
+      const at = list.indexOf(value);
+      if (at === -1) list.push(value); else list.splice(at, 1);
+      if (list.length) answers[facet] = list; else delete answers[facet];
+    }
+    readConcept();
+  }
+
+  function renderWarnings(data) {
+    const list = data.warnings || [];
+    $('vWarnings').innerHTML = list.map((w, i) => `
+      <div class="layer" id="vw${i}">
+        <div class="flex items-center gap-2 flex-wrap">
+          <span class="chip expand">${esc(w.severity || 'warn')}</span>
+          <span class="text-[13px] font-medium">${esc(w.title)}</span>
+        </div>
+        <div class="text-[12.5px] text-[#4c4546] mt-1">${esc(w.detail)}</div>
+        <button data-wtoggle="${i}" class="mt-1">source &amp; evidence</button>
+        <div class="ev">${esc(w.source)}<br><br>${esc(w.evidence)}</div>
+      </div>`).join('');
+    document.querySelectorAll('#vWarnings [data-wtoggle]').forEach(b => b.onclick = () => $('vw' + b.dataset.wtoggle).classList.toggle('open'));
+  }
+
+  // ---- reference images: measured here, never uploaded ------------------
+  async function measureImage(file) {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    await new Promise(res => { img.onload = res; img.onerror = res; img.src = url; });
+    const width = img.naturalWidth || 0, height = img.naturalHeight || 0;
+    let palette = [];
+    if (width && height) {
+      // Read the colours off a 48x48 copy of the image, in this tab only. The
+      // pixel data never leaves the browser; only the hex strings below do.
+      const canvas = document.createElement('canvas');
+      canvas.width = 48; canvas.height = 48;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, 48, 48);
+      try {
+        const px = ctx.getImageData(0, 0, 48, 48).data;
+        const counts = {};
+        for (let i = 0; i < px.length; i += 4) {
+          const key = ((px[i] >> 4) << 8) | ((px[i + 1] >> 4) << 4) | (px[i + 2] >> 4);
+          counts[key] = (counts[key] || 0) + 1;
+        }
+        palette = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 5)
+          .map(([k]) => '#' + [(k >> 8) & 15, (k >> 4) & 15, k & 15]
+            .map(v => (v * 17).toString(16).padStart(2, '0')).join(''));
+      } catch (e) { palette = []; }
+    }
+    URL.revokeObjectURL(url);
+    return { name: file.name, role: 'first_frame', width, height,
+             type: file.type, bytes: file.size, palette, scene: null };
+  }
+
+  async function addImages(files) {
+    for (const file of files) {
+      if (refImages.length >= 4) break;
+      refImages.push(await measureImage(file));
+    }
+    renderRefList();
+    await checkReferences();
+  }
+
+  function renderRefList() {
+    const roles = ((storyboardIndex || {}).roles || []);
+    $('vRefList').innerHTML = refImages.map((img, i) => `
+      <div class="border border-black/10 rounded-card px-3 py-2">
+        <div class="flex items-center justify-between gap-2">
+          <div class="text-[12px] mono truncate">${esc(img.name)}</div>
+          <button data-rmref="${i}" class="text-[11px] underline text-[#4c4546]">remove</button>
+        </div>
+        <div class="text-[11px] text-[#77717A] mt-0.5">${img.width}x${img.height} · ${(img.bytes / 1024).toFixed(0)} KB · ${esc(img.type)}${img.palette.length ? ' · ' + img.palette.join(' ') : ''}</div>
+        <div class="flex gap-2 mt-2">
+          <select data-refrole="${i}" class="text-[11.5px] rounded border-black/15 flex-1">
+            ${roles.map(r => `<option value="${r.id}"${r.id === img.role ? ' selected' : ''}>${esc(r.label)}</option>`).join('')}
+          </select>
+          <select data-refscene="${i}" class="text-[11.5px] rounded border-black/15">
+            <option value="">every scene</option>
+            ${((lastStoryboard || {}).scenes || []).map(s => `<option value="${s.index}"${img.scene === s.index ? ' selected' : ''}>${s.id} only</option>`).join('')}
+          </select>
+        </div>
+      </div>`).join('');
+    document.querySelectorAll('#vRefList [data-rmref]').forEach(b => b.onclick = async () => {
+      refImages.splice(Number(b.dataset.rmref), 1);
+      renderRefList();
+      await checkReferences();
+    });
+    document.querySelectorAll('#vRefList [data-refrole]').forEach(sel => sel.onchange = async () => {
+      refImages[Number(sel.dataset.refrole)].role = sel.value;
+      await checkReferences();
+    });
+    document.querySelectorAll('#vRefList [data-refscene]').forEach(sel => sel.onchange = () => {
+      const value = sel.dataset.refscene;
+      refImages[Number(value)].scene = sel.value ? Number(sel.value) : null;
+    });
+  }
+
+  async function checkReferences() {
+    if (!refImages.length) {
+      $('vRefChecks').innerHTML = '';
+      $('vPaletteOut').innerHTML = '';
+      return;
+    }
+    let data;
+    try {
+      data = await api('/reference', { method: 'POST', body: JSON.stringify({
+        model: $('vModel').value, images: refImages }) });
+    } catch (e) { $('vRefChecks').innerHTML = esc('Could not check these: ' + e.message); return; }
+    $('vRefChecks').innerHTML = (data.checks || []).map(c => `
+      <div class="${c.severity === 'warn' ? 'text-[#B42318]' : 'text-[#4c4546]'}">
+        ${c.image ? '<span class="mono text-[10.5px]">image ' + c.image + ' · </span>' : ''}${esc(c.detail)}
+        <div class="text-[10.5px] text-[#77717A]">${esc(c.source || '')}</div>
+      </div>`).join('') || '<div class="text-[#0a7d33]">No conflicts with what this endpoint documents.</div>';
+    $('vPaletteOut').innerHTML = data.palette_line
+      ? `<span class="text-[#77717A]">palette from your images:</span> <span class="mono">${esc(data.palette_line.line)}</span>
+         <div class="text-[10.5px] text-[#77717A]">${esc(data.palette_line.evidence)}</div>`
+      : '';
+    if (data.palette_line && !$('vPalette').value.trim()) {
+      $('vPalette').value = data.palette_line.colours.join(', ');
+    }
+  }
+
+  // ---- the scenes -------------------------------------------------------
+  async function buildScenes() {
+    const concept = $('vConcept').value.trim();
+    if (!concept) { $('vConcept').focus(); return; }
+    let data;
+    try {
+      data = await api('/storyboard', { method: 'POST', body: JSON.stringify({
+        action: 'scenes', concept, model: $('vModel').value, answers,
+        design: videoDesign(), references: refImages,
+        beats: beats || undefined,
+      }) });
+    } catch (e) { banner('Could not build the scenes: ' + e.message); return; }
+    lastStoryboard = data;
+    renderScenes(data);
+    if (refImages.length) { renderRefList(); }
+    show('vSceneBox');
+    await showPlan();
+  }
+
+  function renderScenes(data) {
+    const totals = data.totals || {};
+    $('vTotals').innerHTML = `${totals.clips} scene(s) · ${totals.per_clip || '?'}s each · ${totals.seconds || 0}s total`;
+    $('vScenes').innerHTML = (data.scenes || []).map(s => {
+      const added = (s.added || []).map(a => `<span class="mono">${esc(a.element)}=${esc(a.value)}</span>`).join(' · ');
+      const cleaned = s.cleaned && s.cleaned.changes.length
+        ? `<div class="text-[11px] text-[#4c4546] mt-1">removed from the prose: ${s.cleaned.changes.map(c => `<span class="mono">${esc(c.removed)}</span>`).join(' · ')}</div>` : '';
+      const unknown = (s.unknown || []).length
+        ? `<div class="text-[11px] text-[#B42318] mt-1">not merged, no source: ${esc(s.unknown.join(', '))}</div>` : '';
+      const refs = (s.references || []).length
+        ? `<div class="text-[11px] text-[#4c4546] mt-1">uses ${s.references.map(r => esc(r.role) + ' (image ' + r.index + ')').join(', ')}</div>` : '';
+      return `<div class="layer">
+        <div class="flex items-center justify-between gap-2 flex-wrap">
+          <div class="text-[13px] font-medium">${esc(s.id)} · ${esc(s.seconds)}s</div>
+          <div class="text-[11px] text-[#77717A]">score ${s.score} · ${Object.entries(s.params || {}).map(([k, v]) => k + '=' + v).join(' ') || 'no parameters'}</div>
+        </div>
+        <div class="text-[11.5px] text-[#77717A] mt-0.5">${esc(s.title)}</div>
+        <textarea rows="2" data-beat="${s.index}" class="w-full rounded border-black/15 mono text-[12px] mt-2">${esc(s.beat)}</textarea>
+        <pre class="json mt-2" style="background:#f3f4f5;color:#191c1d;max-height:190px">${esc(s.prompt)}</pre>
+        ${refs}
+        ${added ? `<div class="text-[11px] text-[#4c4546] mt-1">merged: ${added}</div>` : ''}
+        ${cleaned}${unknown}
+        <button data-toggle="${s.index}" class="mt-1">why these words</button>
+        <div class="ev">${(s.findings || []).map(f => `${esc(f.title)} — ${esc(f.why)}<br><span class="text-[10.5px]">${esc(f.source || '')}</span>`).join('<br><br>') || 'No published rule flags this scene.'}</div>
+      </div>`;
+    }).join('') + `<button id="vRebuild" class="text-[12px] font-medium border border-black/10 px-3 py-1.5 rounded-card hover:border-black/30">Rebuild from these beats</button>`;
+
+    document.querySelectorAll('#vScenes [data-toggle]').forEach(b => b.onclick = () =>
+      b.parentElement.classList.toggle('open'));
+    const rebuild = $('vRebuild');
+    if (rebuild) rebuild.onclick = () => {
+      const edited = [];
+      document.querySelectorAll('#vScenes [data-beat]').forEach(t => {
+        if (t.value.trim()) edited.push(t.value.trim());
+      });
+      beats = edited;
+      buildScenes();
+    };
+
+    const c = data.continuity || {};
+    $('vContinuity').innerHTML = `<div class="text-[11px] font-semibold uppercase tracking-wider text-[#77717A] mb-1">Continuity</div>`
+      + (c.subjects || []).map(s => `<div class="mono text-[11.5px]">${esc(s.handle)} — ${esc(s.wording)}</div>`).join('')
+      + (c.lines || []).map(l => `<div class="text-[11.5px] text-[#4c4546] mt-1">${esc(l)}</div>`).join('')
+      + `<div class="text-[10.5px] text-[#77717A] mt-1">${esc(c.source || '')}</div>`;
+
+    $('vNotes').innerHTML = (data.notes || []).map(n => `
+      <div class="text-[11.5px] ${n.id === 'clip_length' || n.id === 'undocumented_param' ? 'text-[#8A5A00]' : 'text-[#4c4546]'}">
+        <span class="font-medium">${esc(n.title)}</span> — ${esc(n.detail)}
+        ${n.source ? `<div class="text-[10.5px] text-[#77717A]">${esc(n.source)}</div>` : ''}
+        ${n.evidence ? `<div class="text-[10.5px] text-[#77717A]">${esc(n.evidence)}</div>` : ''}
+      </div>`).join('');
+  }
+
+  // ---- the requests -----------------------------------------------------
+  async function showPlan() {
+    if (!lastStoryboard) return;
+    let data;
+    try {
+      data = await api('/video', { method: 'POST', body: JSON.stringify({
+        action: 'plan', storyboard: lastStoryboard, model: $('vModel').value,
+        references: refImages }) });
+    } catch (e) { banner('Could not build the requests: ' + e.message); return; }
+    $('vGate').innerHTML = data.gate && data.gate.enabled
+      ? '<span class="text-[#0a7d33]">This deployment is allowed to generate.</span>'
+      : `<span class="text-[#8A5A00]">Dry run only — nothing is sent.</span> ${esc((data.gate || {}).reason || '')}`;
+    $('vJobs').innerHTML = (data.jobs || []).map(job => `
+      <div class="layer">
+        <div class="flex items-center justify-between gap-2 flex-wrap">
+          <div class="text-[12.5px] font-medium">${esc(job.scene)} · ${esc(job.route || job.endpoint || 'no endpoint')}</div>
+          <div class="text-[11px] text-[#77717A]">${esc(job.note)}</div>
+        </div>
+        <pre class="json mt-2" style="max-height:220px">${esc(JSON.stringify({ method: job.method, path: job.path, body: job.body }, null, 2))}</pre>
+      </div>`).join('');
+    const notes = (data.notes || []).filter(n => n.id !== 'one_request_per_scene');
+    if (notes.length) {
+      $('vJobs').insertAdjacentHTML('beforeend', notes.map(n =>
+        `<div class="text-[11.5px] text-[#8A5A00]"><span class="font-medium">${esc(n.title)}</span> — ${esc(n.detail)}</div>`).join(''));
+    }
+    show('vPlanBox');
+  }
+
+  function resetVideo() {
+    answers = {}; refImages = []; lastStoryboard = null; beats = null;
+    $('vConcept').value = '';
+    $('vRefList').innerHTML = ''; $('vRefChecks').innerHTML = ''; $('vPaletteOut').innerHTML = '';
+    $('vPalette').value = '';
+    show('vChatBox', false); show('vSceneBox', false); show('vPlanBox', false);
+  }
+
   // tabs
   document.querySelectorAll('.tabbtn').forEach(b => b.onclick = () => {
     document.querySelectorAll('.tabbtn').forEach(x => x.classList.remove('active'));
     b.classList.add('active');
     show('tab-preflight', b.dataset.tab === 'preflight');
     show('tab-improve', b.dataset.tab === 'improve');
+    show('tab-video', b.dataset.tab === 'video');
     show('tab-compile', b.dataset.tab === 'compile');
     // Coming from Preflight? Start from the prompt you already wrote.
     if (b.dataset.tab === 'improve' && !$('iPrompt').value.trim()) $('iPrompt').value = $('prompt').value;
+    // Coming from Improve or Preflight? The concept starts as what you wrote.
+    if (b.dataset.tab === 'video' && !$('vConcept').value.trim()) {
+      $('vConcept').value = $('iPrompt').value.trim() || $('prompt').value;
+    }
   });
 
   $('prompt').addEventListener('input', () => $('pcount').textContent = $('prompt').value.length);
@@ -806,6 +1268,25 @@
   $('pModel').addEventListener('keydown', e => { if (e.key === 'Enter') readModelCard(); });
   $('copyImproved').addEventListener('click', () => navigator.clipboard.writeText($('iResult').textContent));
   $('iImage').addEventListener('change', (e) => onImage(e.target.files && e.target.files[0]));
+
+  // video tab
+  $('vSend').addEventListener('click', readConcept);
+  $('vBuild').addEventListener('click', buildScenes);
+  $('vReset').addEventListener('click', resetVideo);
+  $('vModel').addEventListener('change', async () => {
+    if (!$('vChatBox').classList.contains('hidden')) readConcept();
+    // A different endpoint documents different image rules, so re-check the set.
+    if (refImages.length) await checkReferences();
+  });
+  $('vImages').addEventListener('change', (e) => addImages(Array.from(e.target.files || [])));
+  $('vCopyAll').addEventListener('click', () => {
+    if (!lastStoryboard) return;
+    navigator.clipboard.writeText((lastStoryboard.scenes || []).map(s => s.prompt).join('\n\n'));
+  });
+  $('vCopyPlan').addEventListener('click', () => navigator.clipboard.writeText($('vJobs').textContent));
+  $('vConcept').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) readConcept();
+  });
 
   load();
 })();

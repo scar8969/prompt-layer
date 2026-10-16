@@ -16,10 +16,15 @@ from promptlayer import (  # noqa: E402
     dataset_version,
     design_version,
     expander_styles,
+    facet_catalog,
+    generation_gate,
     load_design,
     model_detail,
     model_list,
+    planner_rules,
     preset_index,
+    reference_roles,
+    storyboard_version,
 )
 from promptlayer.http import send_error_json, send_json  # noqa: E402
 
@@ -48,6 +53,15 @@ class handler(BaseHTTPRequestHandler):
             },
             # Hugging Face's own widget presets: counts + where they came from.
             "presets": preset_index(),
+            # The scene planner: the facets a video prompt needs, the roles a
+            # reference image can take, and the published rules behind both.
+            "storyboard": {
+                "version": storyboard_version(),
+                "facets": facet_catalog(),
+                "roles": reference_roles(),
+                "rules": planner_rules(),
+            },
+            "generation": generation_gate(),
         })
 
     def do_OPTIONS(self) -> None:  # noqa: N802

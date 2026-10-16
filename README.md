@@ -25,7 +25,7 @@ without a fetchable source. For a model we have not probed, the API returns
 `expand.prompt_optimizer` layer, the warning with the parameter that turns it off,
 and the resolved parameters tagged `provider default`](docs/screenshot.png)
 
-## Three tools
+## Four tools
 
 **Preflight** — paste a prompt, pick a model, get:
 
@@ -102,6 +102,37 @@ Only the per-model read touches the network, only when you type a model id, and 
 is one public document — nothing about your prompt or your machine is sent. Offline,
 it reports the failure and the local collections still work.
 
+**Video** — talk a concept through, then get one prompt per shot.
+
+A whole video is several shots, and a model given one prompt for all of them produces
+a muddle — Veo's own best-practice page says so and shows three separate clips as the
+fix. So this tab is a conversation that ends in a storyboard:
+
+1. **Explain it** — write the scene, or the whole video, the way you would say it
+   out loud.
+2. **It reads what you wrote.** Subject, action, setting, camera, light, sound and
+   length are matched by pattern and reported back. It **never fills a gap with a
+   guess**: what is not in your words is listed as missing.
+3. **It asks only what is blocking**, each question carrying the reason the model
+   needs it and the guide that says so. Answers become design elements, parameters,
+   or — if they are none of those — a note saying where they *should* go instead of
+   vanishing.
+4. **One beat, one clip.** The concept is split into beats and each beat becomes one
+   scene: an assembled prompt, that endpoint's own parameters, the reference image it
+   uses, and the lint score. Edit a beat and rebuild.
+5. **The requests it becomes** — one job per scene, with the exact method, path and
+   body. That panel is a **dry run**; see the gate below.
+
+![Prompt Layer — the Video tab: the reading of a concept, the questions it asks, two
+scenes with their prompts, and the request each one becomes](docs/screenshot-video.png)
+
+**Reference images** attach to that storyboard, and they are measured, never
+uploaded: the browser reads dimensions, MIME type, byte size and the dominant
+colours, and sends only those numbers. Attach a 1920×1080 still to `sora-2` and it
+tells you the endpoint documents `720x1280` or `1280x720` — with the sentence from
+the guide — instead of letting the request fail. Attach one to a text-to-video
+endpoint and it says the image has nowhere to go, rather than dropping it quietly.
+
 **Compile** — run an **open-source** prompt expander over your idea, using the
 verbatim system prompts shipped by the model owners:
 
@@ -137,6 +168,9 @@ and spends nothing.
 | `GET` | `/api/presets` | Hugging Face presets: `?lang=&task=&limit=`, `?collection=widget-examples&section=&task=`, `?model=<hf id>` |
 | `POST` | `/api/preflight` | `{model, prompt, options?, system_message?, image_count?}` |
 | `POST` | `/api/improve` | `{model, prompt, selections?, palette?, template?, clean?, image?}` |
+| `POST` | `/api/storyboard` | `{action:"plan"\|"scenes", concept, answers?, model?, design?, beats?, references?}` |
+| `POST` | `/api/reference` | `{model, images:[{role,width,height,type,bytes,palette}]}` — measurements only |
+| `POST` | `/api/video` | `{action:"plan"\|"submit", storyboard\|concept, model?, confirm?}` — dry run unless gated |
 | `POST` | `/api/compile` | `{prompt, style, model?, dry_run?}` |
 
 ```bash
@@ -160,11 +194,23 @@ curl -s 'localhost:8090/api/presets?collection=widget-examples&section=Computer%
 curl -s 'localhost:8090/api/presets?lang=en&task=fill-mask' | jq '.data.presets[].text'
 ```
 
+```bash
+curl -s -X POST localhost:8090/api/storyboard -H 'Content-Type: application/json' \
+  -d '{"action":"scenes","model":"sora-2","concept":"A detective named Mara walks through a rain-soaked alley at night. Then she finds a glowing book in a doorway and picks it up.","answers":{"camera_move":"slow pan left"},"design":{"template":"labelled"},"palette":"amber, cream, walnut brown"}' \
+  | jq '.data.totals, .data.scenes[].prompt'
+```
+
+```bash
+curl -s -X POST localhost:8090/api/video -H 'Content-Type: application/json' \
+  -d '{"action":"plan","model":"sora-2","concept":"A lantern drifts down a river at dusk"}' \
+  | jq '.data.dry_run, .data.gate.reason, .data.jobs[0].body'
+```
+
 ## Run it
 
 ```bash
 python dev.py          # http://127.0.0.1:8090   (emulates the Vercel layout)
-python -m pytest -q    # 83 tests
+python -m pytest -q    # 178 tests
 ```
 
 No dependencies — the service, the dataset and the functions are all standard
@@ -174,8 +220,9 @@ library.
 
 1. Import this repo at [vercel.com/new](https://vercel.com/new).
 2. Framework preset **Other**. No build command, no output directory.
-3. Deploy. `/` serves the UI; the six files in `api/` answer at `/api/health`,
-   `/api/models`, `/api/presets`, `/api/preflight`, `/api/improve`, `/api/compile`.
+3. Deploy. `/` serves the UI; the nine files in `api/` answer at `/api/health`,
+   `/api/models`, `/api/presets`, `/api/preflight`, `/api/improve`,
+   `/api/storyboard`, `/api/reference`, `/api/video`, `/api/compile`.
 
 Two things about how Vercel treats this layout, both checked against their docs:
 
@@ -195,6 +242,11 @@ Compile stays dry-run-only unless you set **all three** of
 deliberate: on a public deployment an API key in the environment means anyone can
 spend it, so a key alone is never enough.
 
+Generation has its **own** gate — `ALLOW_REMOTE_GENERATION=1`, `VIDEO_GATEWAY_URL`,
+`VIDEO_API_KEY`, plus `confirm: true` on the request — and the two are deliberately
+separate, so enabling prompt expansion can never silently enable paid generations.
+Until then `/api/video` returns the exact requests and spends nothing.
+
 ## Layout
 
 ```
@@ -204,12 +256,19 @@ api/models.py          |
 api/presets.py         |
 api/preflight.py       |
 api/improve.py         |
+api/storyboard.py      |  the chat turn and the scenes
+api/reference.py       |  the measured-image checks
+api/video.py           |  the requests, and the generation gate
 api/compile.py        /
 promptlayer/
   assembler.py        pure assembly logic (no I/O)
   layers.json         the dataset: every fact + its source and evidence
   improve.py          the lint, the deterministic cleanup, the design merge
   design.json         the improve vocabulary: 11 groups, each item sourced
+  storyboard.py       read the concept, ask the gaps, split into beats, build scenes
+  storyboard.json     the planner's rules and questions, each with its source
+  reference.py        what an image measures to, and what the endpoint does with it
+  video.py            one job per scene + the three-way generation gate
   presets.py          Hugging Face preset loaders + the one live card read
   hf-presets.json     parsed Hub defaults (201 presets, 14 languages)
   hf-widget-examples.json  parsed widget examples (28 types)
@@ -217,7 +276,8 @@ promptlayer/
   http.py             shared request/response helpers
 scripts/              the two parsers that generate the preset datasets
 dev.py                local emulation of the Vercel layout
-tests/                83 tests: datasets, assembly, improvement, and the deployed entry points
+tests/                178 tests: datasets, assembly, improvement, the planner, the
+                      deployed entry points
 ```
 
 Adding a model is one entry in `promptlayer/layers.json`; adding a lint rule or a
@@ -244,6 +304,23 @@ this tool is that every claim can be checked.
 - Model identities are those published by the providers. This tool reads public
   API schemas and open-source repositories; it does not reverse-engineer anything
   private.
+- **The planner has no model behind it either.** Reading the concept, choosing the
+  questions and splitting the beats are pattern matches over your own words — no
+  LLM is called anywhere in this repo, so nothing is generated that cannot be
+  pointed at. Each rule and each question carries the guide that published it; the
+  cue words that find the beat boundaries are this tool's own heuristic and
+  `storyboard.json` marks them `sourced: false` so the UI can say so.
+- **An undocumented parameter is never sent.** Each scene writes a value only where
+  the endpoint's own schema lists it; anything else comes back as an
+  `undocumented_param` note naming the parameter and the reason. A request that
+  fails at the provider is worse than a note.
+- **The chat's answers are placed or reported.** An answer that is a documented
+  design element is merged, one that names a documented parameter becomes it, and
+  anything else produces a note saying it belongs in the concept prose. An answer
+  is never silently dropped on the floor between the conversation and the prompt.
+- **Nothing is generated for you.** `/api/video` builds the requests and stops.
+  The gate that would let it send them is off unless the deployment sets all three
+  variables *and* the request confirms.
 
 Built as a [tokN](https://tokn.co.in) tool.
 

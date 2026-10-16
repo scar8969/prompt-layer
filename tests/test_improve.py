@@ -158,6 +158,24 @@ def test_apply_design_rejects_an_unknown_template():
         apply_design("A robot sits.", {}, template="haiku")
 
 
+def test_dialogue_is_written_as_a_block_not_as_a_design_element():
+    """The line is the user's own words, so it is written verbatim and sourced."""
+    inline = apply_design("A robot sits.", {"dialogue": "Mara: it is raining"}, template="inline")
+    assert "Dialogue: Mara: it is raining." in inline["prompt"]
+    labelled = apply_design("A robot sits.", {"dialogue": "Mara: it is raining"}, template="labelled")
+    assert "Dialogue: Mara: it is raining" in labelled["prompt"]
+    element = next(e for e in labelled["added"] if e["element"] == "dialogue")
+    assert element["value"] == "Mara: it is raining"
+    assert element["source"] and element["evidence"]
+
+
+def test_no_dialogue_means_no_dialogue_block():
+    """An empty answer must not leave an empty block behind."""
+    result = apply_design("A robot sits.", {"dialogue": "   "}, template="labelled")
+    assert "Dialogue:" not in result["prompt"]
+    assert not any(e["element"] == "dialogue" for e in result["added"])
+
+
 def test_palette_is_free_text_and_still_sourced():
     result = apply_design("A robot sits quietly on a bench.", palette="amber, cream, walnut brown")
     assert "Palette anchors: amber, cream, walnut brown" in result["prompt"]

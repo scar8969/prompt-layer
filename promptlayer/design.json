@@ -88,7 +88,7 @@
       "title": "Resolution, duration or aspect requested in the prompt text",
       "why": "These are API parameters. The model will not change them because you asked in prose.",
       "fix": "Move it to the parameter block (size / seconds / aspect_ratio) and delete it from the prompt.",
-      "patterns": ["\\b\\d+\\s*(?:s|sec|secs|seconds)\\b", "\\b(?:720|1080|4k|2160)p\\b", "\\b\\d+\\s*:\\s*\\d+\\b", "make it longer", "higher (?:resolution|quality)", "vertical|portrait orientation|landscape orientation"],
+      "patterns": ["\\b\\d+\\s*(?:s|sec|secs|seconds)\\b(?:\\s+each\\b)?", "\\b(?:720|1080|4k|2160)p\\b", "\\b\\d+\\s*:\\s*\\d+\\b", "make it longer", "higher (?:resolution|quality)", "vertical|portrait orientation|landscape orientation"],
       "source": "sora",
       "evidence": "'The prompt controls the content of the video, but certain attributes are governed only by API parameters. You cannot request them in prose, they must be set explicitly in your API call.'"
     },

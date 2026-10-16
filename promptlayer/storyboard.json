@@ -1,0 +1,260 @@
+{
+  "version": "2026-10-16",
+  "note": "The scene planner's dataset. Every rule the planner applies and every question it asks cites the model owner that published it. The cue words used to split a concept into beats are marked `sourced: false` — they are this tool's heuristic, not a published rule, and the UI says so.",
+
+  "sources": {
+    "sora": "Sora 2 Prompting Guide ([OI] cookbook) — developers.openai.com/cookbook/examples/sora/sora2_prompting_guide",
+    "veo": "Veo video generation prompt guide (Google Cloud) — cloud.google.com/vertex-ai/generative-ai/docs/video/video-gen-prompt-guide",
+    "veo_bp": "Best practices for generating videos (Google Cloud) — cloud.google.com/vertex-ai/generative-ai/docs/video/best-practice",
+    "wan_director": "Wan 2.2 wan/utils/system_prompt.py (T2V_A14B_EN_SYS_PROMPT) — github.com/Wan-Video/Wan2.2",
+    "wan_i2v": "Wan 2.2 wan/utils/system_prompt.py (I2V_A14B_EN_SYS_PROMPT) — github.com/Wan-Video/Wan2.2",
+    "hunyuan": "HunyuanVideo hyvideo/prompt_rewrite.py — github.com/Tencent-Hunyuan/HunyuanVideo"
+  },
+
+  "rules": {
+    "one_beat_per_clip": {
+      "title": "One beat per generation",
+      "source": "veo_bp",
+      "evidence": "Trying to chain multiple distinct events (A then B then C) in one prompt for a short video often leads to muddled or incomplete videos. Not recommended: \"A detective finds a clue in a library, then drives across the city at night, and then confronts a suspect in a warehouse\" Recommended: Generate each part as a separate clip: Clip 1: \"close-up on a detective's gloved hand brushing dust off an old book in a dark library, revealing a hidden symbol\" Clip 2: \"a car driving through a neon-lit city at night, with rain streaking across the windshield, in a film noir style\" Clip 3: \"inside a shadowy warehouse, a detective stands opposite a silhouetted figure, creating a tense atmosphere\"",
+      "why": "A clip is one shot. Three events in one prompt is the single most common way a multi-scene idea comes back muddled.",
+      "fix": "One beat per scene, and each scene is its own generation. Put the continuity in the wording, not in one long prompt."
+    },
+    "storyboard_first": {
+      "title": "Write the storyboard before the shots",
+      "source": "sora",
+      "evidence": "Think of prompting like briefing a cinematographer who has never seen your storyboard. If you leave out details, they'll improvise – and you may not get what you envisioned.",
+      "why": "Anything you leave out, the model chooses. Deciding it here is cheaper than re-generating.",
+      "fix": "Settle subject, action, setting, light and sound once, then reuse them across every scene."
+    },
+    "shot_specific": {
+      "title": "Say what the shot has to achieve",
+      "source": "sora",
+      "evidence": "By being specific about what the “shot” should achieve, you give the model more control and consistency to work with.",
+      "why": "A shot's job is a decision you make, not a detail the model guesses.",
+      "fix": "Give each scene one job — establish, reveal, react, resolve — and one camera move that serves it."
+    },
+    "character_reference": {
+      "title": "Keep a subject's wording identical across clips",
+      "source": "sora",
+      "evidence": "Character references (objects and animals) – Upload a character once and reuse it across videos with consistent appearance.",
+      "why": "The model has no memory between generations. The only thing that carries a character across clips is the words and the reference images you repeat.",
+      "fix": "Fix one phrase per recurring subject and use it word for word in every scene."
+    },
+    "extension": {
+      "title": "Extending beats re-writing a longer prompt",
+      "source": "sora",
+      "evidence": "Video extension – Extend an existing video using the full initial clip as context, not just the last frame.",
+      "why": "If a scene needs more than one clip's worth of time, extension keeps what was already generated instead of starting over.",
+      "fix": "Keep the clip inside the endpoint's documented length and extend it, rather than asking for a longer clip in prose."
+    }
+  },
+
+  "facets": [
+    {
+      "id": "subject",
+      "label": "Subject",
+      "blocking": true,
+      "free": true,
+      "why": "The thing the shot is about. Repeating it word for word is what holds a multi-scene video together.",
+      "source": "sora",
+      "evidence": "Character references (objects and animals) – Upload a character once and reuse it across videos with consistent appearance."
+    },
+    {
+      "id": "action",
+      "label": "Action",
+      "blocking": true,
+      "free": true,
+      "why": "What moves during the clip. A video model has to animate something; a description with no verb is a photograph.",
+      "source": "wan_i2v",
+      "evidence": "I2V prompt: 'Your rewritten video description should retain the dynamic parts of the provided prompts, focusing on the main subject's actions... Retain and emphasize descriptions of camera movements.'"
+    },
+    {
+      "id": "setting",
+      "label": "Setting",
+      "blocking": true,
+      "free": true,
+      "why": "Where it happens. Left out, the model picks a location for you and picks a different one next time.",
+      "source": "veo",
+      "evidence": "Veo prompting guide: describe the subject, the action, the setting and the camera in the prompt; 'a busy marketplace scene with vendors and shoppers' is given as a worked example."
+    },
+    {
+      "id": "camera_move",
+      "label": "Camera move",
+      "blocking": false,
+      "free": true,
+      "options_from": "camera_move",
+      "why": "One shot has one move. Two moves in one prompt fight each other.",
+      "source": "veo",
+      "evidence": "Camera movements: static shot, pan (left/right), tilt (up/down), dolly (in/out), truck (left/right), pedestal (up/down), zoom (in/out), crane shot, aerial shot, handheld, whip pan, arc shot."
+    },
+    {
+      "id": "shot_size",
+      "label": "Shot size",
+      "blocking": false,
+      "free": true,
+      "options_from": "shot_size",
+      "why": "Framing decides how much of the scene the clip can show — and how much detail the model has to invent.",
+      "source": "wan_director",
+      "evidence": "Wan 2.2 system prompt: the shot scale is part of the required description (extreme wide shot, wide shot, medium shot, medium close-up, close-up, extreme close-up, over-the-shoulder shot)."
+    },
+    {
+      "id": "lens",
+      "label": "Lens",
+      "blocking": false,
+      "free": true,
+      "options_from": "lens",
+      "why": "Lens choice is the cheapest way to change how a scene reads.",
+      "source": "veo",
+      "evidence": "The Veo prompt guide lists lens and camera language (for example 'low-angle close-up shot') as part of an effective prompt."
+    },
+    {
+      "id": "light_source",
+      "label": "Light",
+      "blocking": false,
+      "free": true,
+      "options_from": "light_source",
+      "why": "Light is what the model has to render; naming the source is more reliable than naming a mood.",
+      "source": "wan_director",
+      "evidence": "Wan 2.2 system prompt requires the lighting to be described, with the light source named (for example sunlight, moonlight, practical light)."
+    },
+    {
+      "id": "time_of_day",
+      "label": "Time of day",
+      "blocking": false,
+      "free": true,
+      "options_from": "time_of_day",
+      "why": "Sets the light and the palette in one word, and keeps it consistent across scenes.",
+      "source": "wan_director",
+      "evidence": "Wan 2.2 system prompt includes the time of day among the required descriptive fields."
+    },
+    {
+      "id": "tone",
+      "label": "Palette",
+      "blocking": false,
+      "free": true,
+      "options_from": "tone",
+      "why": "Naming the colours is how you get the same look twice.",
+      "source": "wan_director",
+      "evidence": "Wan 2.2 system prompt asks for the colour tone, listing warm colours, cool colours and pastel colours."
+    },
+    {
+      "id": "style",
+      "label": "Style",
+      "blocking": false,
+      "free": true,
+      "options_from": "style",
+      "why": "A named medium moves the whole clip at once.",
+      "source": "sora",
+      "evidence": "The Sora prompting guide describes the look of the shot as part of the brief, alongside the action and the camera."
+    },
+    {
+      "id": "audio",
+      "label": "Sound",
+      "blocking": false,
+      "free": true,
+      "options_from": "audio",
+      "why": "On endpoints that generate audio, silence is a choice the model makes unless you name the sound.",
+      "source": "sora",
+      "evidence": "Prompt template: '[Prose scene description...] Cinematography: Camera shot: / Mood: / Actions: - ... Dialogue: ...' — background sound is a named block in the template."
+    },
+    {
+      "id": "dialogue",
+      "label": "Speech",
+      "blocking": false,
+      "free": true,
+      "why": "Spoken lines are budgeted against the clip length; a long line in a 4-second clip is cut off.",
+      "source": "veo_bp",
+      "evidence": "Best practices: quotation marks around speech tend to be rendered as on-screen text rather than spoken, and a short clip only fits a few words of dialogue."
+    },
+    {
+      "id": "duration",
+      "label": "Clip length",
+      "blocking": false,
+      "free": true,
+      "options_from_params": "seconds",
+      "why": "The endpoint documents the lengths it accepts; a length asked for in prose is ignored.",
+      "source": "sora",
+      "evidence": "seconds: the clip length, supported values: “4”, “8”, “12”, “16”, “20”."
+    },
+    {
+      "id": "aspect",
+      "label": "Aspect / size",
+      "blocking": false,
+      "free": true,
+      "options_from_params": "size",
+      "why": "Resolution and aspect are parameters, not words in a prompt.",
+      "source": "sora",
+      "evidence": "Supported resolutions are dependent on the model selection: sora-2 720x1280, 1280x720, sora-2-pro 720x1280, 1280x720 1024x1792, 1792x1024 1080x1920, 1920x1080"
+    }
+  ],
+
+  "cues": {
+    "note": "Not a published rule — this is the tool's own heuristic for finding beat boundaries in prose. It is labelled as such wherever it is shown, and every scene it produces can be edited by hand.",
+    "sourced": false,
+    "patterns": [
+      "\\bthen\\b",
+      "\\band then\\b",
+      "\\bafter that\\b",
+      "\\bafterwards\\b",
+      "\\bnext\\b",
+      "\\bmeanwhile\\b",
+      "\\bat the same time\\b",
+      "\\bsuddenly\\b",
+      "\\blater\\b",
+      "\\bfinally\\b",
+      "\\beventually\\b",
+      "\\bcut to\\b",
+      "\\bwe see\\b",
+      "\\bthe camera (?:then )?(?:cuts|moves|pans|tracks)\\b",
+      "\\bclose on\\b",
+      "\\bwe cut\\b"
+    ],
+    "sentence_enders": "A sentence boundary is a beat boundary too: one sentence, one shot."
+  },
+
+  "roles": [
+    {
+      "id": "first_frame",
+      "label": "First frame",
+      "why": "The clip starts on this image, so the prompt describes only what changes.",
+      "source": "wan_i2v",
+      "evidence": "I2V prompt: 'Your rewritten video description should retain the dynamic parts of the provided prompts, focusing on the main subject's actions... Retain and emphasize descriptions of camera movements.'"
+    },
+    {
+      "id": "last_frame",
+      "label": "Last frame",
+      "why": "Where the clip has to end. Only some endpoints accept it.",
+      "source": "wan_i2v",
+      "evidence": "fal.ai Hailuo 02 image-to-video input schema carries first_frame_image and last_frame_image; 'The first frame image for video generation. The output video will have the same aspect ratio as this image.'"
+    },
+    {
+      "id": "style",
+      "label": "Style reference",
+      "why": "A look to copy. Text describes the look; the image is only useful if the endpoint takes one.",
+      "source": "sora",
+      "evidence": "Character references (objects and animals) – Upload a character once and reuse it across videos with consistent appearance."
+    },
+    {
+      "id": "subject",
+      "label": "Subject reference",
+      "why": "The same character in every scene is the whole continuity problem.",
+      "source": "sora",
+      "evidence": "Character references (objects and animals) – Upload a character once and reuse it across videos with consistent appearance."
+    },
+    {
+      "id": "palette",
+      "label": "Palette source",
+      "why": "Colours read off this image, so every scene in the video uses the same three to five anchors.",
+      "source": "sora",
+      "evidence": "Lighting + palette: 'Palette anchors: amber, cream, walnut brown' — name three to five colours."
+    }
+  ],
+
+  "reference_rules": {
+    "measured_not_uploaded": "A reference image is measured in the browser: dimensions, MIME type, byte size and the dominant colours. The pixels are never sent to this tool.",
+    "resolution_must_match": {
+      "source": "sora",
+      "evidence": "'Include an image file as the input_reference parameter in your POST /videos request. The image must match the target video's resolution (size). Supported file formats are image/jpeg, image/png, and image/webp.'"
+    }
+  }
+}

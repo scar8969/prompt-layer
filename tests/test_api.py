@@ -34,7 +34,8 @@ def _load_function(name: str):
     return module.handler
 
 
-@pytest.fixture(scope="module", params=["health", "models", "preflight", "improve", "compile", "presets"])
+@pytest.fixture(scope="module", params=["health", "models", "preflight", "improve", "compile", "presets",
+                                        "storyboard", "reference", "video"])
 def function_server(request):
     """One server per function, mounted at the path Vercel would use."""
     handler = _load_function(request.param)
@@ -262,3 +263,185 @@ def test_improve_rejects_bad_input_and_never_persists_an_image():
     _, body = _post(base, {"model": "veo3-fast", "prompt": "a cat surfing at dawn",
                            "image": {"width": 999999, "height": 5, "type": "image/png"}})
     assert body["data"]["image"] == {}
+
+
+# ------------------------------------------------------------------ storyboard
+STORY_CONCEPT = ("A detective named Mara walks through a rain-soaked alley at night. "
+                 "Then she finds a glowing book in a doorway and picks it up.")
+
+
+def test_storyboard_get_serves_the_facets_roles_and_rules():
+    base = _server_for("storyboard")
+    status, body = _get(base)
+    assert status == 200
+    assert body["success"] is True
+    assert {f["id"] for f in body["facets"]} >= {"subject", "action", "camera_move"}
+    assert {r["id"] for r in body["roles"]} == {"first_frame", "last_frame", "style",
+                                                "subject", "palette"}
+    for rule in body["rules"].values():
+        assert rule["source"] and rule["evidence"]
+
+
+def test_storyboard_plan_is_one_chat_turn():
+    base = _server_for("storyboard")
+    _, body = _post(base, {"action": "plan", "concept": "a video",
+                           "model": "sora-2"})
+    data = body["data"]
+    assert data["ready"] is False
+    assert set(data["blocking_missing"]) == {"subject", "action", "setting"}
+    assert data["reply"] and data["questions"]
+    for question in data["questions"]:
+        assert question["why"] and question["source"] and question["evidence"]
+
+
+def test_storyboard_scenes_returns_one_prompt_per_beat():
+    base = _server_for("storyboard")
+    _, body = _post(base, {"action": "scenes", "concept": STORY_CONCEPT,
+                           "model": "sora-2", "scene_seconds": 8,
+                           "design": {"selections": {"tone": "cool colors"},
+                                      "palette": "teal, amber"}})
+    data = body["data"]
+    assert [s["id"] for s in data["scenes"]] == ["scene-1", "scene-2"]
+    assert data["totals"]["per_clip"] == "8"
+    assert "Palette anchors: teal, amber" in data["scenes"][0]["prompt"]
+    assert data["scenes"][0]["params"]["seconds"] == "8"
+
+
+def test_storyboard_accepts_a_top_level_palette_like_improve_does():
+    """A field the caller sent must not be dropped because of where it sat."""
+    base = _server_for("storyboard")
+    _, body = _post(base, {"action": "scenes", "concept": STORY_CONCEPT, "model": "sora-2",
+                           "palette": "amber, cream, walnut brown",
+                           "template": "labelled"})
+    data = body["data"]
+    assert "Palette anchors: amber, cream, walnut brown" in data["scenes"][0]["prompt"]
+    assert data["scenes"][0]["prompt"].startswith("A detective named Mara")
+
+
+def test_storyboard_accepts_the_callers_own_beats():
+    base = _server_for("storyboard")
+    _, body = _post(base, {"action": "scenes", "concept": STORY_CONCEPT, "model": "sora-2",
+                           "beats": ["only this shot"]})
+    assert len(body["data"]["scenes"]) == 1
+    assert body["data"]["scenes"][0]["prompt"].startswith("only this shot")
+
+
+def test_storyboard_rejects_bad_input():
+    base = _server_for("storyboard")
+    for payload in (
+        {"action": "plan"},
+        {"action": "plan", "concept": "   "},
+        {"action": "plan", "concept": "x" * 9000},
+        {"action": "dance", "concept": "a cat walks"},
+        {"action": "plan", "concept": "a cat walks", "model": "not-a-model"},
+        {"action": "plan", "concept": "a cat walks", "answers": "dolly in"},
+        {"action": "scenes", "concept": "a cat walks", "design": "bold"},
+    ):
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            _post(base, payload)
+        assert exc.value.code == 400, payload
+
+
+# ------------------------------------------------------------------ reference
+def test_reference_get_serves_the_roles_and_the_rules():
+    base = _server_for("reference")
+    status, body = _get(base)
+    assert status == 200
+    assert body["max_images"] >= 1
+    assert body["rules"] and body["source"] and body["evidence"]
+
+
+def test_reference_checks_measurements_against_the_endpoint():
+    base = _server_for("reference")
+    _, body = _post(base, {
+        "model": "sora-2",
+        "images": [{"name": "frame.png", "role": "last_frame", "width": 1920,
+                    "height": 1080, "type": "image/png", "bytes": 1000,
+                    "palette": ["#0a1b2c", "#f0e0d0"]}],
+    })
+    data = body["data"]
+    assert data["palette_line"]["line"] == "Palette anchors: #0a1b2c, #f0e0d0"
+    ids = {c["id"] for c in data["checks"]}
+    assert {"role_not_supported", "reference_size"} <= ids
+    for check in data["checks"]:
+        assert check["source"] and check["evidence"]
+    # Only measurements come back: the image itself is never sent or stored.
+    assert set(data["images"][0]) == {"index", "role", "role_asked", "name", "width",
+                                      "height", "type", "bytes", "palette", "scene"}
+
+
+def test_reference_rejects_bad_input():
+    base = _server_for("reference")
+    for payload in ({"images": "frame.png"}, {"model": "not-a-model", "images": []}):
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            _post(base, payload)
+        assert exc.value.code == 400, payload
+
+
+# ------------------------------------------------------------------ video
+def test_video_get_reports_the_gate_as_closed(monkeypatch):
+    for name in ("ALLOW_REMOTE_GENERATION", "VIDEO_GATEWAY_URL", "VIDEO_API_KEY"):
+        monkeypatch.delenv(name, raising=False)
+    base = _server_for("video")
+    status, body = _get(base)
+    assert status == 200
+    assert body["gate"]["enabled"] is False
+    assert "dry run only" in body["gate"]["reason"]
+
+
+def test_video_plan_is_a_dry_run_with_one_job_per_scene(monkeypatch):
+    for name in ("ALLOW_REMOTE_GENERATION", "VIDEO_GATEWAY_URL", "VIDEO_API_KEY"):
+        monkeypatch.delenv(name, raising=False)
+    base = _server_for("video")
+    _, body = _post(base, {"action": "plan", "concept": STORY_CONCEPT, "model": "sora-2",
+                           "scene_seconds": 8})
+    data = body["data"]
+    assert data["dry_run"] is True
+    assert data["gate"]["enabled"] is False
+    assert data["totals"]["requests"] == 2
+    assert data["route"] == "POST /v1/videos"
+    assert all(job["body"]["prompt"] for job in data["jobs"])
+
+
+def test_video_submit_refuses_without_the_gate_even_with_confirm(monkeypatch):
+    for name in ("ALLOW_REMOTE_GENERATION", "VIDEO_GATEWAY_URL", "VIDEO_API_KEY"):
+        monkeypatch.delenv(name, raising=False)
+    base = _server_for("video")
+    _, body = _post(base, {"action": "submit", "concept": STORY_CONCEPT, "model": "sora-2",
+                           "scene_seconds": 8, "confirm": True})
+    data = body["data"]
+    assert data["submitted"] is False
+    assert "dry run only" in data["reason"]
+
+
+def test_video_submit_refuses_without_confirm_when_the_gate_is_open(monkeypatch):
+    monkeypatch.setenv("ALLOW_REMOTE_GENERATION", "1")
+    monkeypatch.setenv("VIDEO_GATEWAY_URL", "https://gateway.example")
+    monkeypatch.setenv("VIDEO_API_KEY", "sk-test-not-a-real-key")
+    base = _server_for("video")
+    _, body = _post(base, {"action": "submit", "concept": STORY_CONCEPT, "model": "sora-2",
+                           "scene_seconds": 8})
+    data = body["data"]
+    assert data["submitted"] is False
+    assert "confirm=true is required" in data["reason"]
+
+
+def test_video_accepts_a_storyboard_from_the_other_endpoint():
+    base = _server_for("video")
+    storyboard = {"scenes": [{"id": "scene-1", "index": 1, "seconds": "8",
+                              "prompt": "a lantern drifts down a river at dusk",
+                              "params": {"seconds": "8"}, "references": []}]}
+    _, body = _post(base, {"action": "plan", "storyboard": storyboard, "model": "sora-2"})
+    assert body["data"]["jobs"][0]["body"]["prompt"] == "a lantern drifts down a river at dusk"
+
+
+def test_video_rejects_bad_input():
+    base = _server_for("video")
+    for payload in (
+        {"action": "plan"},
+        {"action": "burn", "concept": "a cat walks"},
+        {"action": "plan", "concept": "a cat walks", "model": "not-a-model"},
+    ):
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            _post(base, payload)
+        assert exc.value.code == 400, payload

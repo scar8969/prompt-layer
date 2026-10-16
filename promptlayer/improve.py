@@ -289,6 +289,12 @@ def apply_design(
             parts[key] = ", ".join(items)
     negatives = take("negative")
     palette_value = (palette or "").strip()
+    # Dialogue is not a vocabulary list: it is the user's own line. It is written
+    # in the documented block shape and reported like every other merge.
+    dialogue = selections.get("dialogue")
+    if isinstance(dialogue, list):
+        dialogue = " ".join(str(d) for d in dialogue)
+    dialogue = str(dialogue or "").strip()
 
     # Inline: one sentence of settings appended after the prose.
     settings_bits = []
@@ -305,6 +311,11 @@ def apply_design(
         inline = (inline + ("" if inline.endswith((".", "!", "?")) else ".") + " " + ". ".join(settings_bits) + ".")
     if negatives:
         inline += f" Negative prompt: {', '.join(negatives)}."
+    if dialogue:
+        inline += f" Dialogue: {dialogue}."
+        added.append({"element": "dialogue", "value": dialogue,
+                      "source": design["sources"].get(template_conf["source"], template_conf["source"]),
+                      "evidence": template_conf["evidence"]})
 
     if template == "inline":
         return {
@@ -333,6 +344,11 @@ def apply_design(
         lines.append(f"Composition: {parts['composition']}")
     if parts.get("style"):
         lines.append(f"Style: {parts['style']}")
+    if dialogue:
+        lines.append(f"Dialogue: {dialogue}")
+        added.append({"element": "dialogue", "value": dialogue,
+                      "source": design["sources"].get(template_conf["source"], template_conf["source"]),
+                      "evidence": template_conf["evidence"]})
     if parts.get("audio"):
         lines.append(f"Background Sound: {parts['audio']}")
     if negatives:
@@ -395,7 +411,10 @@ def clean_prompt(prompt: str, keep_move: Optional[str] = None) -> Dict[str, Any]
     text = re.sub(r"\s{2,}", " ", text)
     text = re.sub(r"\s+([.,;:!?])", r"\1", text)
     text = re.sub(r"\.\s*\.", ".", text)
-    text = re.sub(r"^\s*[.,;:]\s*", "", text)
+    text = re.sub(r",\s*,+", ",", text)
+    text = re.sub(r",\s*([.!?])", r"\1", text)
+    text = re.sub(r"^[\s,;:]+", "", text)
+    text = re.sub(r"\s*[,;:]\s*$", "", text)
     text = text.strip()
     if text and text[-1] not in ".!?":
         text += "."
