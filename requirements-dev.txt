@@ -1,0 +1,4 @@
+# The deployment has no dependencies (see requirements.txt). This file is only
+# for running the test suite locally:
+#   pip install -r requirements-dev.txt && python -m pytest -q
+pytest>=8

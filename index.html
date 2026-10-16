@@ -1,0 +1,361 @@
+<!DOCTYPE html><html lang="en"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>Prompt Layer — what model providers add to your prompt</title>
+<link href="https://fonts.googleapis.com" rel="preconnect">
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect">
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&amp;family=Inter:wght@300;400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+  tailwind.config = {
+    darkMode: "class",
+    theme: { extend: {
+      colors: { "primary": "#000000", "background": "#F9F9FA", "surface": "#f8f9fa",
+        "surface-container": "#edeeef", "surface-container-low": "#f3f4f5",
+        "on-surface": "#191c1d", "on-surface-variant": "#4c4546",
+        "outline-variant": "#cfc4c5", "error": "#DC2626" },
+      fontFamily: { "sans": ["Inter","system-ui","sans-serif"], "mono": ["JetBrains Mono","monospace"], "serif": ["DM Serif Display","serif"] },
+      borderRadius: { "card": "0.75rem" }
+    } }
+  };
+</script>
+<style>
+  body { font-family: Inter, system-ui, sans-serif; background: #F9F9FA; }
+  .mono { font-family: 'JetBrains Mono', monospace; }
+  pre.json { font-family: 'JetBrains Mono', monospace; font-size: 11px; line-height: 1.55; background: #0d0d0d; color: #e8e8e8; padding: 14px; border-radius: 10px; overflow: auto; max-height: 340px; }
+  .chip { display:inline-flex; align-items:center; gap:4px; font-size:10px; font-weight:600; letter-spacing:.04em; text-transform:uppercase; padding:2px 7px; border-radius:999px; border:1px solid #00000014; }
+  .chip.rewrite { background:#FDECEC; color:#B42318; border-color:#F5C6C2; }
+  .chip.expand  { background:#FFF3D6; color:#8A5A00; border-color:#F0D9A0; }
+  .chip.augment { background:#EAF3FF; color:#1B4B8F; border-color:#C6DDF7; }
+  .chip.screen  { background:#F1EAFE; color:#5B2AA8; border-color:#DCCBF6; }
+  .chip.inject  { background:#EDEEEF; color:#3F3F46; border-color:#DADADD; }
+  .chip.pin     { background:#EDEEEF; color:#3F3F46; border-color:#DADADD; }
+  .chip.off     { opacity:.45; text-decoration: line-through; }
+  .layer { border:1px solid #00000012; border-radius:10px; padding:10px 12px; background:#fff; }
+  .layer button { font-size:11px; color:#4c4546; text-decoration:underline; }
+  .layer .ev { display:none; margin-top:8px; font-family:'JetBrains Mono',monospace; font-size:10.5px; color:#4c4546; background:#f3f4f5; border-radius:6px; padding:8px; }
+  .layer.open .ev { display:block; }
+  .tabbtn.active { background:#000; color:#fff; }
+</style>
+</head>
+<body class="text-on-surface">
+
+<div class="max-w-6xl mx-auto px-5 py-6">
+
+  <div class="flex items-start justify-between gap-4 mb-5">
+    <div>
+      <h1 class="text-2xl font-semibold tracking-tight">Prompt Layer</h1>
+      <p class="text-sm text-[#77717A] max-w-2xl mt-1">Every video and chat endpoint rewrites, expands, screens or pads your prompt before the model runs — and none of it is visible in the UI. Pick a model, paste your prompt, and see the exact payload, every parameter the provider fills in for you, and the switch that turns each one off. Every claim links to its source.</p>
+    </div>
+  </div>
+
+  <div id="svcBanner" class="hidden mb-4 rounded-card border border-[#F0D9A0] bg-[#FFF3D6] text-[#8A5A00] text-sm px-4 py-3">
+    <strong>Service not reachable.</strong> <span id="svcBannerMsg"></span>
+    <span class="mono text-[11px] block mt-1">the /api/preflight and /api/compile functions are not responding</span>
+  </div>
+
+  <div class="flex gap-2 mb-4">
+    <button class="tabbtn active text-sm font-medium px-3.5 py-2 rounded-card border border-black/10" data-tab="preflight">Preflight</button>
+    <button class="tabbtn text-sm font-medium px-3.5 py-2 rounded-card border border-black/10" data-tab="compile">Compile</button>
+  </div>
+
+  <!-- ============================ PREFLIGHT ============================ -->
+  <section id="tab-preflight" class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+
+    <div class="bg-white border border-black/10 rounded-card p-5">
+      <label class="block text-xs font-semibold uppercase tracking-wider text-[#77717A] mb-1.5">Model</label>
+      <select id="model" class="w-full rounded-card border-black/15 text-sm mb-4"></select>
+
+      <label class="block text-xs font-semibold uppercase tracking-wider text-[#77717A] mb-1.5">Your prompt</label>
+      <textarea id="prompt" rows="6" class="w-full rounded-card border-black/15 text-sm mono mb-2" placeholder="a cat surfing a huge wave at sunset, slow motion"></textarea>
+      <div class="text-[11px] text-[#77717A] mb-4"><span id="pcount">0</span> characters · video endpoints cap around 2,500</div>
+
+      <div id="modelNote" class="text-[11px] text-[#4c4546] mb-4"></div>
+
+      <label class="block text-xs font-semibold uppercase tracking-wider text-[#77717A] mb-1.5">Provider parameters (leave alone for defaults)</label>
+      <div id="params" class="space-y-2 mb-4 text-sm"></div>
+
+      <label class="block text-xs font-semibold uppercase tracking-wider text-[#77717A] mb-1.5">Custom system message (chat models)</label>
+      <input id="sysmsg" class="w-full rounded-card border-black/15 text-sm mono mb-4" placeholder="leave blank to see what the stack injects">
+
+      <div class="flex gap-2">
+        <button id="runPreflight" class="bg-black text-white text-sm font-medium px-4 py-2.5 rounded-card">Preflight</button>
+        <button id="fullControl" class="text-sm font-medium border border-black/10 px-4 py-2.5 rounded-card hover:border-black/30">Apply full control</button>
+      </div>
+    </div>
+
+    <div class="space-y-4">
+      <div id="warnBox" class="hidden bg-white border border-black/10 rounded-card p-5">
+        <div class="text-xs font-semibold uppercase tracking-wider text-[#77717A] mb-2">What will happen to your prompt</div>
+        <ul id="warnList" class="space-y-2 text-sm"></ul>
+      </div>
+
+      <div id="layerBox" class="hidden bg-white border border-black/10 rounded-card p-5">
+        <div class="text-xs font-semibold uppercase tracking-wider text-[#77717A] mb-3">Layers touching this request</div>
+        <div id="layerList" class="space-y-2"></div>
+        <div id="conditionalBox" class="hidden mt-4 pt-4 border-t border-black/5">
+          <div class="text-[11px] font-semibold uppercase tracking-wider text-[#77717A] mb-1">May also apply — not confirmed for this request</div>
+          <ul id="conditionalList" class="space-y-1.5 text-[12px] text-[#77717A]"></ul>
+        </div>
+      </div>
+
+      <div id="paramBox" class="hidden bg-white border border-black/10 rounded-card p-5">
+        <div class="text-xs font-semibold uppercase tracking-wider text-[#77717A] mb-3">Resolved parameters</div>
+        <table class="w-full text-sm"><thead><tr class="text-left text-[11px] uppercase tracking-wider text-[#77717A]"><th class="pb-2">param</th><th class="pb-2">value</th><th class="pb-2">source</th></tr></thead><tbody id="paramRows"></tbody></table>
+      </div>
+
+      <div id="payloadBox" class="hidden bg-white border border-black/10 rounded-card p-5">
+        <div class="flex items-center justify-between mb-3">
+          <div class="text-xs font-semibold uppercase tracking-wider text-[#77717A]">Exact upstream payload</div>
+          <button id="copyPayload" class="text-[11px] underline text-[#4c4546]">copy</button>
+        </div>
+        <pre id="payload" class="json"></pre>
+        <div class="text-[11px] text-[#77717A] mt-2" id="patchNote"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ COMPILE ============================ -->
+  <section id="tab-compile" class="hidden grid grid-cols-1 lg:grid-cols-2 gap-5">
+    <div class="bg-white border border-black/10 rounded-card p-5">
+      <label class="block text-xs font-semibold uppercase tracking-wider text-[#77717A] mb-1.5">Your idea</label>
+      <textarea id="cPrompt" rows="5" class="w-full rounded-card border-black/15 text-sm mono mb-4" placeholder="a cat surfing a huge wave"></textarea>
+
+      <label class="block text-xs font-semibold uppercase tracking-wider text-[#77717A] mb-1.5">Expander</label>
+      <select id="style" class="w-full rounded-card border-black/15 text-sm mb-2"></select>
+      <div id="styleNote" class="text-[11px] text-[#4c4546] mb-4"></div>
+
+      <label class="flex items-center gap-2 text-sm mb-4">
+        <input type="checkbox" id="dryRun" checked class="rounded border-black/20">
+        <span>Dry run only — show the request, spend nothing</span>
+      </label>
+
+      <button id="runCompile" class="bg-black text-white text-sm font-medium px-4 py-2.5 rounded-card">Compile</button>
+      <p class="text-[11px] text-[#77717A] mt-3">The expander prompts are the verbatim ones shipped by Wan, HunyuanVideo and Kandinsky — the same instructions those platforms run internally. With dry run off they execute through the gateway.</p>
+    </div>
+
+    <div class="space-y-4">
+      <div id="systemBox" class="hidden bg-white border border-black/10 rounded-card p-5">
+        <div class="text-xs font-semibold uppercase tracking-wider text-[#77717A] mb-2">System prompt used <span id="sysOrigin" class="normal-case tracking-normal text-[11px] text-[#77717A]"></span></div>
+        <pre id="systemPrompt" class="json"></pre>
+      </div>
+      <div id="resultBox" class="hidden bg-white border border-black/10 rounded-card p-5">
+        <div class="text-xs font-semibold uppercase tracking-wider text-[#77717A] mb-2" id="resultTitle">Result</div>
+        <pre id="result" class="json"></pre>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+(function () {
+  const API = '/api';
+  const $ = (id) => document.getElementById(id);
+  let models = [], styles = [], detail = null, lastPayload = null;
+
+  // No accounts on this deployment: nothing to authenticate with.
+  const authHeaders = () => ({});
+
+  async function api(path, opts = {}) {
+    const r = await fetch(API + path, {
+      ...opts,
+      headers: { 'Content-Type': 'application/json', ...authHeaders(), ...(opts.headers || {}) },
+    });
+    if (r.status === 404) throw Object.assign(new Error('not deployed'), { code: 404 });
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(body.message || ('HTTP ' + r.status));
+    return body.data !== undefined ? body.data : body;
+  }
+
+  function banner(msg) {
+    const b = $('svcBanner');
+    b.classList.remove('hidden');
+    $('svcBannerMsg').textContent = msg;
+  }
+
+  function show(id, on = true) { $(id).classList.toggle('hidden', !on); }
+
+  async function load() {
+    let res;
+    try {
+      // Raw fetch, not api(): this endpoint's envelope carries the model list,
+      // the expander styles and the dataset version together.
+      const r = await fetch(API + '/models', { headers: authHeaders() });
+      if (r.status === 404) throw Object.assign(new Error('not deployed'), { code: 404 });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      res = await r.json();
+    } catch (e) {
+      banner(e.code === 404
+        ? 'The API functions are not reachable from this deployment.'
+        : ('Could not reach it: ' + e.message));
+      return;
+    }
+    models = res.data || [];
+    styles = res.expanders || [];
+    $('dsVersion').textContent = res.version || '';
+    $('model').innerHTML = models.map(m =>
+      `<option value="${m.slug}">${m.display} — ${m.provider}${m.active_layer_count ? ' · ' + m.active_layer_count + ' active layer(s)' : ''}</option>`).join('');
+    $('style').innerHTML = styles.map(s => `<option value="${s.id}">${s.label}</option>`).join('');
+    $('styleNote').textContent = styles[0] ? ('origin: ' + styles[0].origin) : '';
+    await onModel();
+  }
+
+  async function onModel() {
+    const slug = $('model').value;
+    try { detail = await api('/models?slug=' + encodeURIComponent(slug)); } catch (e) { detail = null; }
+    if (!detail) { $('modelNote').textContent = ''; $('params').innerHTML = ''; return; }
+    $('modelNote').textContent = `${detail.endpoint} · ${detail.layers.length} layer(s) documented · ${detail.sources.length} source(s)`;
+    $('params').innerHTML = Object.entries(detail.params).map(([k, v]) => {
+      const def = v.default === null ? '' : String(v.default);
+      const isBool = typeof v.default === 'boolean';
+      return `<label class="flex items-center justify-between gap-3 border border-black/10 rounded-card px-3 py-2">
+        <span class="mono text-[12px]">${k}</span>
+        ${isBool ? `<select data-param="${k}" class="text-xs rounded border-black/15"><option value="">default</option><option value="false">false</option><option value="true">true</option></select>`
+                 : `<input data-param="${k}" class="text-xs rounded border-black/15 w-40 mono" placeholder="default${def ? ' (' + def + ')' : ''}">`}
+      </label>`;
+    }).join('');
+  }
+
+  function collectOptions() {
+    const opts = {};
+    document.querySelectorAll('[data-param]').forEach(el => {
+      const raw = el.value.trim();
+      if (raw === '') return;
+      if (raw === 'true') opts[el.dataset.param] = true;
+      else if (raw === 'false') opts[el.dataset.param] = false;
+      else if (!isNaN(Number(raw))) opts[el.dataset.param] = Number(raw);
+      else opts[el.dataset.param] = raw;
+    });
+    return opts;
+  }
+
+  async function preflight() {
+    const prompt = $('prompt').value.trim();
+    if (!prompt) { $('prompt').focus(); return; }
+    let data;
+    try {
+      data = await api('/preflight', { method: 'POST', body: JSON.stringify({
+        model: $('model').value, prompt, options: collectOptions(),
+        system_message: $('sysmsg').value.trim() || undefined,
+      }) });
+    } catch (e) { banner('Preflight failed: ' + e.message); return; }
+
+    // warnings
+    $('warnList').innerHTML = (data.warnings.length ? data.warnings : ['Nothing documented is added to this request.'])
+      .map(w => `<li class="flex gap-2"><span class="text-[#77717A]">—</span><span>${w}</span></li>`).join('');
+    show('warnBox');
+
+    // layers
+    $('layerList').innerHTML = data.layers.map((l, i) => `
+      <div class="layer" id="layer${i}">
+        <div class="flex items-center gap-2 flex-wrap">
+          <span class="chip ${l.kind} ${l.active ? '' : 'off'}">${l.kind}</span>
+          <span class="mono text-[12px]">${l.id}</span>
+          <span class="text-[11px] ${l.active ? 'text-[#B42318]' : 'text-[#77717A]'}">${l.active ? 'active' : 'off'}</span>
+        </div>
+        <div class="text-[13px] text-[#4c4546] mt-1.5">${l.detail}</div>
+        <button data-toggle="${i}" class="mt-1">source &amp; evidence</button>
+        <div class="ev">${l.source}<br><br>${(l.evidence || '').replace(/</g, '&lt;')}</div>
+      </div>`).join('');
+    document.querySelectorAll('[data-toggle]').forEach(b => b.onclick = () => $('layer' + b.dataset.toggle).classList.toggle('open'));
+
+    // Conditional layers: documented, but not true of this request kind or this
+    // route. Shown separately so they are never read as active facts.
+    const cond = data.conditional_layers || [];
+    if (cond.length) {
+      $('conditionalList').innerHTML = cond.map(l =>
+        `<li><span class="mono">${l.id}</span> — ${l.why}</li>`).join('');
+      show('conditionalBox');
+    } else {
+      show('conditionalBox', false);
+    }
+    show('layerBox');
+
+    // params
+    $('paramRows').innerHTML = Object.entries(data.params).map(([k, v]) => {
+      const val = v.value === null ? '<span class="text-[#77717A]">null</span>' : `<span class="mono text-[12px]">${String(v.value).slice(0, 80)}</span>`;
+      const src = v.source === 'provider default'
+        ? '<span class="text-[#B42318] text-[11px]">provider default</span>'
+        : '<span class="text-[11px]">your override</span>';
+      return `<tr class="border-t border-black/5"><td class="py-1.5 pr-3 mono text-[12px]">${k}</td><td class="py-1.5 pr-3">${val}</td><td class="py-1.5">${src}</td></tr>`;
+    }).join('') || '<tr><td class="py-2 text-[#77717A] text-sm" colspan="3">No provider parameters documented for this model.</td></tr>';
+    show('paramBox');
+
+    // payload
+    lastPayload = data.messages ? { messages: data.messages, params: data.params } : { prompt: data.prompt.forwarded_as, params: data.params };
+    $('payload').textContent = JSON.stringify(lastPayload, null, 2);
+    // The patch only covers boolean/knob parameters. Layers whose off-switch is
+    // "supply your own value" have nothing to flip, so name them explicitly
+    // instead of claiming there is nothing to turn off.
+    const replaceable = data.layers
+      .filter(l => l.active && l.disable_with)
+      .flatMap(l => Object.entries(l.disable_with).filter(([, v]) => v === '<your own>').map(([k]) => k));
+    const patchBits = [];
+    if (Object.keys(data.full_control_patch).length) {
+      patchBits.push('Full control patch: ' + JSON.stringify(data.full_control_patch));
+    }
+    if (replaceable.length) {
+      patchBits.push('Replace by sending your own: ' + replaceable.join(', '));
+    }
+    $('patchNote').textContent = patchBits.length
+      ? patchBits.join(' · ')
+      : 'No additive parameters documented — nothing to turn off here.';
+    show('payloadBox');
+  }
+
+  function applyFullControl() {
+    if (!detail) return;
+    const doc = {};
+    detail.layers.forEach(l => Object.entries(l.disable_with || {}).forEach(([k, v]) => {
+      if (v === '<your own>') { const el = document.querySelector(`[data-param="${k}"]`); if (el) el.value = 'blur, distorted faces, extra limbs, text overlays'; }
+      else doc[k] = v;
+    }));
+    Object.entries(doc).forEach(([k, v]) => {
+      const el = document.querySelector(`[data-param="${k}"]`);
+      if (!el) return;
+      if (el.tagName === 'SELECT') el.value = String(v);
+      else el.value = String(v);
+    });
+  }
+
+  async function compile() {
+    const prompt = $('cPrompt').value.trim();
+    if (!prompt) { $('cPrompt').focus(); return; }
+    let data;
+    try {
+      data = await api('/compile', { method: 'POST', body: JSON.stringify({ prompt, style: $('style').value, dry_run: $('dryRun').checked }) });
+    } catch (e) { banner('Compile failed: ' + e.message); return; }
+    const sys = data.system_prompt || (data.request.messages[0].content);
+    $('systemPrompt').textContent = sys;
+    $('sysOrigin').textContent = data.origin ? '· ' + data.origin : '';
+    show('systemBox');
+    $('resultTitle').textContent = data.dry_run ? 'Request that would be sent' : 'Compiled prompt';
+    $('result').textContent = data.dry_run ? JSON.stringify(data.request, null, 2) : data.compiled;
+    show('resultBox');
+  }
+
+  // tabs
+  document.querySelectorAll('.tabbtn').forEach(b => b.onclick = () => {
+    document.querySelectorAll('.tabbtn').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    show('tab-preflight', b.dataset.tab === 'preflight');
+    show('tab-compile', b.dataset.tab === 'compile');
+  });
+
+  $('prompt').addEventListener('input', () => $('pcount').textContent = $('prompt').value.length);
+  $('model').addEventListener('change', onModel);
+  $('runPreflight').addEventListener('click', preflight);
+  $('fullControl').addEventListener('click', applyFullControl);
+  $('runCompile').addEventListener('click', compile);
+  $('copyPayload').addEventListener('click', () => navigator.clipboard.writeText($('payload').textContent));
+
+  load();
+})();
+</script>
+  <footer class="mt-10 pt-5 border-t border-black/10 text-[11px] text-[#77717A] flex flex-wrap gap-x-4 gap-y-1">
+    <span>Dataset version <span id="dsVersion" class="mono"></span></span>
+    <span>Every layer cites its source — nothing here is inferred.</span>
+    <span>Built as a tokN tool · <a href="https://tokn.co.in" class="underline">tokn.co.in</a></span>
+  </footer>
+</body></html>

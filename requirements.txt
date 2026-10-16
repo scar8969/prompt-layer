@@ -1,0 +1,6 @@
+# Prompt Layer has no third-party dependencies — the service, the dataset and
+# the Vercel functions are all standard library. This file exists because
+# Vercel's Python builder looks for it; leaving it empty is intentional.
+#
+# pytest is only needed to run the test suite locally, and is in
+# requirements-dev.txt so it never ships with the functions.
