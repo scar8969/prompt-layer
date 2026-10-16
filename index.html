@@ -218,7 +218,7 @@
               <input id="rName" class="w-full rounded-card border-black/15 text-sm mono" placeholder="gpt-4o-mini" autocomplete="off" spellcheck="false">
               <input id="rKey" type="password" class="w-full rounded-card border-black/15 text-sm mono" placeholder="API key" autocomplete="off" spellcheck="false">
             </div>
-            <input id="rUrl" class="w-full rounded-card border-black/15 text-sm mono mb-2" placeholder="https://api.openai.com/v1/chat/completions" autocomplete="off" spellcheck="false">
+            <input id="rUrl" class="w-full rounded-card border-black/15 text-sm mono mb-2" value="https://asiasouth.up.railway.app/v1/chat/completions" placeholder="https://api.openai.com/v1/chat/completions" autocomplete="off" spellcheck="false">
 
             <label class="block text-[10.5px] font-semibold uppercase tracking-wider text-[#77717A] mb-1">The body that gets sent — editable</label>
             <textarea id="rBody" rows="7" class="w-full rounded-card border-black/15 text-[11.5px] mono" spellcheck="false"></textarea>
@@ -229,11 +229,13 @@
             </div>
 
             <div class="text-[10.5px] text-[#77717A] mt-1.5">
-              The key is read from that field for this one request and nowhere else — not stored, not put in
-              the page's storage, not sent to this tool's server. The request goes from this page straight to
-              the URL you type, so the endpoint has to allow calls from a page: Anthropic and Replicate refuse
-              them, [OI], fal, Together, Groq and Hugging Face allow them. For the ones that refuse, the
-              Compile tab is the path that works, because it goes through a server.
+              The URL is filled in for you: a gateway at
+              <span class="mono">asiasouth.up.railway.app</span>, which is OpenAI-compatible and allows
+              calls from a page (checked from this one). Replace it with any other endpoint — the request
+              goes to whatever is in that field and nowhere else. The key is read from the field for this
+              one request: not stored, not put in the page's storage, not sent to this tool's server.
+              Providers that refuse calls from a page — Anthropic and Replicate, measured 2026-10-16 —
+              need the Compile tab instead, because that path goes through a server.
             </div>
             <div id="rReply" class="mt-2"></div>
           </div>

@@ -109,8 +109,12 @@ it reports the failure and the local collections still work.
 A preset here is an **input text**, not a parameter set: Hugging Face's defaults carry
 nothing but the example and its source, so there is nothing to map onto a model's
 request body. That left the presets inert — they filled a box and stopped. So the same
-panel takes a **model name, an endpoint URL and an API key**, and sends the prompt to
-the endpoint you named.
+panel takes a **model name, an API key and an endpoint URL**, and sends the prompt to
+the endpoint you named. The URL ships filled in with
+`https://asiasouth.up.railway.app/v1/chat/completions` — an OpenAI-compatible gateway
+that allows calls from a page — so the box works on arrival, and it is editable for
+anything else. The whole URL is in the field because that is what gets posted to: a
+bare base would send the request to `/` and the gateway would answer 404 for the path.
 
 The request is made **by the page, to that URL, and nowhere else**:
 

@@ -111,7 +111,32 @@ def test_the_box_says_where_the_request_goes():
     """
     html = _page()
     assert "not stored" in html
-    assert "straight to" in html
+    assert "goes to whatever is in that field" in html
+
+
+def test_the_endpoint_field_ships_prefilled_and_complete():
+    """The shipped default is a working endpoint, not an empty box.
+
+    Hardcoded on request, to a gateway that is OpenAI-compatible and allows calls from
+    a page. Both were checked against the live gateway before it was hardcoded: a
+    request from this page reached it and came back 401 for the missing key, rather
+    than being blocked by the browser or 404ing on the path.
+
+    The URL is asserted whole, including `/v1/chat/completions`, because the box posts
+    to exactly what is in the field: a base URL alone would send the request to
+    `/` and the gateway would answer 404 for the path.
+    """
+    tag = _tag("rUrl")
+    assert 'value="https://asiasouth.up.railway.app/v1/chat/completions"' in tag, tag
+    # the placeholder stays a generic example, distinct from the shipped value
+    assert 'placeholder="https://api.openai.com/v1/chat/completions"' in tag, tag
+
+
+def test_the_default_endpoint_is_named_on_screen():
+    """The default URL is visible next to the box, so it is not a hidden setting."""
+    html = _page()
+    assert "asiasouth.up.railway.app" in html
+    assert "filled in for you" in html
 
 
 def test_a_body_that_is_not_json_is_refused_before_anything_is_sent():
