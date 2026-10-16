@@ -37,6 +37,9 @@
   .layer .ev { display:none; margin-top:8px; font-family:'JetBrains Mono',monospace; font-size:10.5px; color:#4c4546; background:#f3f4f5; border-radius:6px; padding:8px; }
   .layer.open .ev { display:block; }
   .tabbtn.active { background:#000; color:#fff; }
+  .vchip { font-size:11.5px; padding:3px 9px; border:1px solid #0000001f; border-radius:999px; background:#fff; color:#4c4546; }
+  .vchip:hover { border-color:#00000059; }
+  .vchip.on { background:#000; color:#fff; border-color:#000; }
 </style>
 </head>
 <body class="text-on-surface">
@@ -57,6 +60,7 @@
 
   <div class="flex gap-2 mb-4">
     <button class="tabbtn active text-sm font-medium px-3.5 py-2 rounded-card border border-black/10" data-tab="preflight">Preflight</button>
+    <button class="tabbtn text-sm font-medium px-3.5 py-2 rounded-card border border-black/10" data-tab="improve">Improve</button>
     <button class="tabbtn text-sm font-medium px-3.5 py-2 rounded-card border border-black/10" data-tab="compile">Compile</button>
   </div>
 
@@ -116,6 +120,72 @@
     </div>
   </section>
 
+  <!-- ============================ IMPROVE ============================ -->
+  <section id="tab-improve" class="hidden grid grid-cols-1 lg:grid-cols-2 gap-5">
+    <div class="bg-white border border-black/10 rounded-card p-5">
+      <label class="block text-xs font-semibold uppercase tracking-wider text-[#77717A] mb-1.5">Prompt to improve</label>
+      <textarea id="iPrompt" rows="5" class="w-full rounded-card border-black/15 text-sm mono mb-3" placeholder="a beautiful cinematic shot of a man walking in a room, 8k, make it longer"></textarea>
+
+      <label class="block text-xs font-semibold uppercase tracking-wider text-[#77717A] mb-1.5">Reference image <span class="normal-case tracking-normal font-normal">(optional — never uploaded, measured in your browser)</span></label>
+      <input type="file" id="iImage" accept="image/png,image/jpeg,image/webp" class="w-full text-xs mb-1">
+      <div id="iImageNote" class="text-[11px] text-[#77717A] mb-4">For image-to-video, the image locks composition and look; the prompt then describes only what moves.</div>
+
+      <div class="grid grid-cols-2 gap-3 mb-4">
+        <div>
+          <label class="block text-xs font-semibold uppercase tracking-wider text-[#77717A] mb-1.5">Merge shape</label>
+          <select id="iTemplate" class="w-full rounded-card border-black/15 text-sm"></select>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold uppercase tracking-wider text-[#77717A] mb-1.5">Palette anchors</label>
+          <input id="iPalette" class="w-full rounded-card border-black/15 text-sm mono" placeholder="amber, cream, walnut brown">
+        </div>
+      </div>
+
+      <div id="vocab" class="space-y-3 mb-3"></div>
+
+      <label class="flex items-start gap-2 text-sm mb-4">
+        <input type="checkbox" id="iClean" checked class="mt-0.5 rounded border-black/20">
+        <span>Also clean the prose — remove feeling-words, resolution/duration asked in prose, quote marks around speech, and extra camera moves. Every removal is listed.</span>
+      </label>
+
+      <div class="flex gap-2">
+        <button id="runImprove" class="bg-black text-white text-sm font-medium px-4 py-2.5 rounded-card">Improve</button>
+        <button id="clearDesign" class="text-sm font-medium border border-black/10 px-4 py-2.5 rounded-card hover:border-black/30">Clear design elements</button>
+      </div>
+    </div>
+
+    <div class="space-y-4">
+      <div id="iScoreBox" class="hidden bg-white border border-black/10 rounded-card p-5">
+        <div class="flex items-baseline justify-between mb-1">
+          <div class="text-xs font-semibold uppercase tracking-wider text-[#77717A]">Checklist score</div>
+          <div class="text-2xl font-semibold"><span id="iScoreBefore"></span> <span class="text-[#77717A] text-base">→</span> <span id="iScoreAfter"></span></div>
+        </div>
+        <div class="text-[11px] text-[#77717A]" id="iScoreNote"></div>
+        <div class="text-[11px] text-[#4c4546] mt-2" id="iCounts"></div>
+      </div>
+
+      <div id="iFindBox" class="hidden bg-white border border-black/10 rounded-card p-5">
+        <div class="text-xs font-semibold uppercase tracking-wider text-[#77717A] mb-3">What limits this output</div>
+        <div id="iFindings" class="space-y-2"></div>
+      </div>
+
+      <div id="iDesignBox" class="hidden bg-white border border-black/10 rounded-card p-5">
+        <div class="text-xs font-semibold uppercase tracking-wider text-[#77717A] mb-3">Design elements merged in</div>
+        <div id="iAdded" class="space-y-1.5 text-[12px]"></div>
+        <div id="iUnknown" class="hidden text-[12px] text-[#B42318] mt-2"></div>
+      </div>
+
+      <div id="iResultBox" class="hidden bg-white border border-black/10 rounded-card p-5">
+        <div class="flex items-center justify-between mb-3">
+          <div class="text-xs font-semibold uppercase tracking-wider text-[#77717A]">Prompt to send</div>
+          <button id="copyImproved" class="text-[11px] underline text-[#4c4546]">copy</button>
+        </div>
+        <pre id="iResult" class="json" style="background:#f3f4f5;color:#191c1d"></pre>
+        <div id="iRefNotes" class="mt-3 space-y-2"></div>
+      </div>
+    </div>
+  </section>
+
   <!-- ============================ COMPILE ============================ -->
   <section id="tab-compile" class="hidden grid grid-cols-1 lg:grid-cols-2 gap-5">
     <div class="bg-white border border-black/10 rounded-card p-5">
@@ -153,6 +223,7 @@
   const API = '/api';
   const $ = (id) => document.getElementById(id);
   let models = [], styles = [], detail = null, lastPayload = null;
+  let design = { vocab: {}, templates: {} }, imageInfo = null;
 
   // No accounts on this deployment: nothing to authenticate with.
   const authHeaders = () => ({});
@@ -193,7 +264,11 @@
     }
     models = res.data || [];
     styles = res.expanders || [];
+    design = res.design || { vocab: {}, templates: {} };
     $('dsVersion').textContent = res.version || '';
+    renderVocab();
+    $('iTemplate').innerHTML = Object.entries(design.templates || {}).map(([id, t]) =>
+      `<option value="${id}">${t.label}</option>`).join('');
     $('model').innerHTML = models.map(m =>
       `<option value="${m.slug}">${m.display} — ${m.provider}${m.active_layer_count ? ' · ' + m.active_layer_count + ' active layer(s)' : ''}</option>`).join('');
     $('style').innerHTML = styles.map(s => `<option value="${s.id}">${s.label}</option>`).join('');
@@ -335,12 +410,175 @@
     show('resultBox');
   }
 
+  // ---------------------------------------------------------------- improve
+  // The vocabulary comes from the API, so the chips offered are exactly the ones
+  // the lint and the merge understand — a value we cannot source is never merged.
+  const SINGLE_SELECT = new Set(['camera_move', 'shot_size', 'lens', 'light_source', 'tone', 'time_of_day', 'composition', 'style']);
+  const LABELS = {
+    camera_move: 'Camera move — exactly one', shot_size: 'Shot size', lens: 'Lens / optics',
+    light_source: 'Light source', light_quality: 'Light quality and angle', tone: 'Colour tone',
+    time_of_day: 'Time of day', composition: 'Composition', style: 'Look / format',
+    negative: 'Negative prompt — nouns only', audio: 'Audio',
+  };
+
+  function renderVocab() {
+    const groups = ['style', 'time_of_day', 'shot_size', 'camera_move', 'lens', 'light_source',
+                    'light_quality', 'tone', 'composition', 'audio', 'negative'];
+    $('vocab').innerHTML = groups.map(key => {
+      const group = (design.vocab || {})[key];
+      if (!group) return '';
+      const single = SINGLE_SELECT.has(key);
+      const chips = group.items.map(item =>
+        `<button type="button" class="vchip" data-key="${key}" data-value="${item.replace(/"/g, '&quot;')}"
+           data-single="${single ? 1 : 0}"
+           title="${(group.evidence || '').replace(/"/g, '&quot;')}"
+           >${item}</button>`).join('');
+      const note = group.default_when_unspecified
+        ? ` · if you pick nothing, the model applies <span class="mono">${group.default_when_unspecified}</span>`
+        : '';
+      return `<details class="border border-black/10 rounded-card px-3 py-2">
+        <summary class="cursor-pointer text-[12px] font-medium">${LABELS[key] || group.label}
+          <span class="text-[11px] text-[#77717A] font-normal">${single ? '· pick one' : '· pick any'}${note}</span></summary>
+        <div class="flex flex-wrap gap-1.5 mt-2">${chips}</div>
+        <div class="text-[10.5px] text-[#77717A] mt-2">source: ${group.source === 'wan_director' ? 'Wan 2.2 system prompt' : group.source === 'veo' ? 'Veo prompt guide' : group.source === 'sora' ? 'Sora 2 prompting guide' : group.source}</div>
+      </details>`;
+    }).join('');
+    document.querySelectorAll('.vchip').forEach(chip => chip.onclick = () => {
+      const single = chip.dataset.single === '1';
+      if (single) {
+        document.querySelectorAll(`.vchip[data-key="${chip.dataset.key}"]`).forEach(other => {
+          if (other !== chip) other.classList.remove('on');
+        });
+        chip.classList.toggle('on');
+      } else {
+        chip.classList.toggle('on');
+      }
+    });
+  }
+
+  function collectSelections() {
+    const out = {};
+    document.querySelectorAll('.vchip.on').forEach(chip => {
+      const key = chip.dataset.key, value = chip.dataset.value;
+      if (chip.dataset.single === '1') out[key] = value;
+      else (out[key] = out[key] || []).push(value);
+    });
+    return out;
+  }
+
+  function clearDesign() {
+    document.querySelectorAll('.vchip.on').forEach(c => c.classList.remove('on'));
+    $('iPalette').value = '';
+  }
+
+  async function onImage(file) {
+    if (!file) { imageInfo = null; return; }
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    await new Promise(res => { img.onload = res; img.onerror = res; img.src = url; });
+    imageInfo = {
+      count: 1,
+      width: img.naturalWidth || 0,
+      height: img.naturalHeight || 0,
+      type: file.type,
+      bytes: file.size,
+    };
+    URL.revokeObjectURL(url);
+    const dims = imageInfo.width ? `${imageInfo.width}x${imageInfo.height}` : 'unreadable';
+    $('iImageNote').textContent = `${file.name} · ${dims} · ${(file.size / 1024).toFixed(0)} KB · ${file.type} — measured locally, not uploaded.`;
+  }
+
+  function severityChip(sev) {
+    const cls = sev === 'error' ? 'rewrite' : sev === 'warn' ? 'expand' : 'inject';
+    return `<span class="chip ${cls}">${sev}</span>`;
+  }
+
+  function renderFindings(list) {
+    if (!list.length) {
+      return '<p class="text-[13px] text-[#4c4546]">Nothing in the published rules flags this prompt.</p>';
+    }
+    return list.map((f, i) => `
+      <div class="layer" id="find${i}">
+        <div class="flex items-center gap-2 flex-wrap">
+          ${severityChip(f.severity)}
+          <span class="text-[13px] font-medium">${f.title}</span>
+        </div>
+        <div class="text-[12.5px] text-[#4c4546] mt-1">${f.why}</div>
+        <div class="text-[12.5px] mt-1"><span class="text-[#77717A]">fix:</span> ${f.fix}</div>
+        ${f.detail ? `<div class="text-[11.5px] text-[#77717A] mt-1">${f.detail}</div>` : ''}
+        <button data-toggle="${i}" class="mt-1">source &amp; evidence</button>
+        <div class="ev">${f.source}<br><br>${(f.evidence || '').replace(/</g, '&lt;')}</div>
+      </div>`).join('');
+  }
+
+  async function runImprove() {
+    const prompt = $('iPrompt').value.trim();
+    if (!prompt) { $('iPrompt').focus(); return; }
+    let data;
+    try {
+      data = await api('/improve', { method: 'POST', body: JSON.stringify({
+        model: $('model').value,
+        prompt,
+        selections: collectSelections(),
+        palette: $('iPalette').value.trim() || undefined,
+        template: $('iTemplate').value || 'inline',
+        clean: $('iClean').checked,
+        image: imageInfo || undefined,
+      }) });
+    } catch (e) { banner('Improve failed: ' + e.message); return; }
+
+    $('iScoreBefore').textContent = data.before.score;
+    $('iScoreAfter').textContent = data.after.score;
+    const d = data.delta_score;
+    $('iScoreAfter').style.color = d > 0 ? '#0a7d33' : d < 0 ? '#B42318' : '';
+    $('iScoreNote').textContent = data.before.score_note + (d !== 0 ? ` Merge moved it ${d > 0 ? '+' : ''}${d}.` : '');
+    const c = data.before.counts;
+    $('iCounts').textContent = `${c.error} error(s) · ${c.warn} warning(s) · ${c.info} note(s) on what you wrote.`;
+    show('iScoreBox');
+
+    $('iFindings').innerHTML = renderFindings(data.before.findings);
+    document.querySelectorAll('[data-toggle]').forEach(b => b.onclick = () => $('find' + b.dataset.toggle).classList.toggle('open'));
+    show('iFindBox');
+
+    if (data.design.added.length) {
+      $('iAdded').innerHTML = data.design.added.map(a =>
+        `<div><span class="mono text-[11px]">${a.element}</span> — ${a.value}
+          <div class="text-[10.5px] text-[#77717A]">${a.source}</div></div>`).join('');
+      show('iDesignBox');
+    } else {
+      show('iDesignBox', false);
+    }
+    $('iResult').textContent = data.after.prompt;
+
+    if (data.design.unknown.length) {
+      $('iUnknown').textContent = 'Not merged (no source for these): ' + data.design.unknown.join(', ');
+      show('iUnknown');
+    } else { show('iUnknown', false); }
+
+    // Conflicts and the cleanup log: what the merge would have made worse, and
+    // exactly which words the cleanup removed.
+    const notes = [];
+    (data.conflicts || []).forEach(c => notes.push(
+      `<div class="text-[11.5px] text-[#B42318]">${c.detail}<div class="text-[10.5px] text-[#77717A]">${c.source || ''}</div></div>`));
+    if (data.cleaned && data.cleaned.changes.length) {
+      notes.push(`<div class="text-[11.5px] text-[#4c4546]"><span class="text-[#77717A]">cleaned ${data.cleaned.changes.length} thing(s):</span> ` +
+        data.cleaned.changes.map(c => `<span class="mono">${c.removed}</span>`).join(' · ') + '</div>');
+    }
+    $('iRefNotes').innerHTML = notes.join('') + (data.reference_notes || []).map(n =>
+      `<div class="text-[11.5px] ${n.severity === 'warn' ? 'text-[#B42318]' : 'text-[#4c4546]'}">
+        ${n.detail}<div class="text-[10.5px] text-[#77717A]">${n.source || ''}</div></div>`).join('');
+    show('iResultBox');
+  }
+
   // tabs
   document.querySelectorAll('.tabbtn').forEach(b => b.onclick = () => {
     document.querySelectorAll('.tabbtn').forEach(x => x.classList.remove('active'));
     b.classList.add('active');
     show('tab-preflight', b.dataset.tab === 'preflight');
+    show('tab-improve', b.dataset.tab === 'improve');
     show('tab-compile', b.dataset.tab === 'compile');
+    // Coming from Preflight? Start from the prompt you already wrote.
+    if (b.dataset.tab === 'improve' && !$('iPrompt').value.trim()) $('iPrompt').value = $('prompt').value;
   });
 
   $('prompt').addEventListener('input', () => $('pcount').textContent = $('prompt').value.length);
@@ -349,6 +587,11 @@
   $('fullControl').addEventListener('click', applyFullControl);
   $('runCompile').addEventListener('click', compile);
   $('copyPayload').addEventListener('click', () => navigator.clipboard.writeText($('payload').textContent));
+
+  $('runImprove').addEventListener('click', runImprove);
+  $('clearDesign').addEventListener('click', clearDesign);
+  $('copyImproved').addEventListener('click', () => navigator.clipboard.writeText($('iResult').textContent));
+  $('iImage').addEventListener('change', (e) => onImage(e.target.files && e.target.files[0]));
 
   load();
 })();

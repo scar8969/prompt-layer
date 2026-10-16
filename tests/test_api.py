@@ -34,7 +34,7 @@ def _load_function(name: str):
     return module.handler
 
 
-@pytest.fixture(scope="module", params=["health", "models", "preflight", "compile"])
+@pytest.fixture(scope="module", params=["health", "models", "preflight", "improve", "compile"])
 def function_server(request):
     """One server per function, mounted at the path Vercel would use."""
     handler = _load_function(request.param)
@@ -190,7 +190,7 @@ def test_compile_unknown_style_is_a_400_with_the_options():
 def test_remote_compile_stays_off_without_the_opt_in(monkeypatch):
     """A key alone must not be enough: ALLOW_REMOTE_COMPILE is a deliberate act."""
     monkeypatch.setenv("COMPILE_GATEWAY_URL", "https://example.invalid")
-    monkeypatch.setenv("COMPILE_API_KEY", "sk-should-not-be-usable")
+    monkeypatch.setenv("COMPILE_API_KEY", "sk-test-not-a-real-key")
     monkeypatch.delenv("ALLOW_REMOTE_COMPILE", raising=False)
     from promptlayer.http import compile_is_enabled
 
@@ -199,3 +199,66 @@ def test_remote_compile_stays_off_without_the_opt_in(monkeypatch):
     _, body = _post(base, {"prompt": "a cat surfing a wave", "style": "wan-engineer", "dry_run": False})
     assert body["data"]["dry_run"] is True
     assert "not enabled" in body["data"]["reason"]
+
+
+# ------------------------------------------------------------------ improve
+def test_improve_lints_merges_and_scores_over_http():
+    base = _server_for("improve")
+    status, body = _post(base, {
+        "model": "hailuo-02-standard",
+        "prompt": "A beautiful cinematic 8k scene of a man. Camera dollies in and pans left. Make it longer.",
+        "selections": {"camera_move": "dolly in", "shot_size": "close-up shot", "tone": "warm colors"},
+        "palette": "amber, cream, walnut brown",
+        "clean": True,
+    })
+    assert status == 200
+    data = body["data"]
+    assert data["after"]["score"] > data["before"]["score"]
+    assert data["delta_score"] > 0
+    assert "beautiful" not in data["after"]["prompt"]
+    assert data["cleaned"]["changes"]
+    assert all(c["source"] for c in data["cleaned"]["changes"])
+    assert data["design"]["added"]
+
+
+def test_improve_carries_the_models_own_layers_into_the_lint():
+    base = _server_for("improve")
+    _, body = _post(base, {"model": "hailuo-02-standard",
+                           "prompt": "a cat surfs a wave at dawn, medium shot, slow dolly in, warm light"})
+    findings = {f["id"] for f in body["data"]["before"]["findings"]}
+    assert "rewriting_layer_active" in findings
+    assert body["data"]["before"]["findings"]
+    assert all(f["source"] and f["evidence"] for f in body["data"]["before"]["findings"])
+
+
+def test_improve_uses_only_browser_supplied_image_measurements():
+    base = _server_for("improve")
+    _, body = _post(base, {
+        "model": "sora-2",
+        "prompt": "the camera pans up as the man stands, desert at dawn",
+        "image": {"count": 1, "width": 1920, "height": 1080, "type": "image/png", "bytes": 400000},
+    })
+    data = body["data"]
+    assert data["image"] == {"count": 1, "width": 1920, "height": 1080, "type": "image/png", "bytes": 400000}
+    notes = {n["id"] for n in data["reference_notes"]}
+    assert "reference_field" in notes
+    assert "reference_size" in notes  # documented size is 720x1280 / 1280x720
+
+
+def test_improve_rejects_bad_input_and_never_persists_an_image():
+    base = _server_for("improve")
+    for payload in (
+        {"model": "veo3-fast"},
+        {"model": "veo3-fast", "prompt": "   "},
+        {"model": "veo3-fast", "prompt": "x" * 5000},
+        {"prompt": "a cat", "model": ""},
+        {"model": "veo3-fast", "prompt": "a cat surfing", "selections": "dolly in"},
+        {"model": "veo3-fast", "prompt": "a cat surfing", "template": "haiku"},
+    ):
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            _post(base, payload)
+        assert exc.value.code == 400, payload
+    # an image that fails validation is dropped rather than kept
+    _, body = _post(base, {"model": "veo3-fast", "prompt": "a cat surfing at dawn",
+                           "image": {"width": 999999, "height": 5, "type": "image/png"}})
+    assert body["data"]["image"] == {}

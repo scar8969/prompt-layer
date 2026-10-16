@@ -12,7 +12,7 @@ from urllib.parse import parse_qs, urlparse
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from promptlayer import dataset_version, expander_styles, model_detail, model_list  # noqa: E402
+from promptlayer import dataset_version, design_version, expander_styles, load_design, model_detail, model_list  # noqa: E402
 from promptlayer.http import send_error_json, send_json  # noqa: E402
 
 
@@ -30,6 +30,14 @@ class handler(BaseHTTPRequestHandler):
             "data": model_list(),
             "expanders": expander_styles(),
             "version": dataset_version(),
+            # The improvement vocabulary and templates, so the UI can offer the
+            # same sourced options the lint understands.
+            "design": {
+                "version": design_version(),
+                "vocab": load_design()["vocab"],
+                "templates": load_design()["templates"],
+                "sources": load_design()["sources"],
+            },
         })
 
     def do_OPTIONS(self) -> None:  # noqa: N802

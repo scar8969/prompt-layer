@@ -74,6 +74,8 @@ def model_detail(slug: str) -> Optional[Dict[str, Any]]:
         "provider": model["provider"],
         "endpoint": model["endpoint"],
         "kind": model["kind"],
+        "accepts_image": model.get("accepts_image", False),
+        "reference": model.get("reference"),
         "params": model["params"],
         "layers": model["layers"],
         "sources": sorted({layer["source"] for layer in model["layers"]}),
@@ -90,6 +92,7 @@ def model_list() -> List[Dict[str, Any]]:
                 "display": m["display"],
                 "provider": m["provider"],
                 "kind": m["kind"],
+                "accepts_image": m.get("accepts_image", False),
                 "layer_count": len(m["layers"]),
                 "active_layer_count": sum(1 for x in m["layers"] if x.get("active")),
             }

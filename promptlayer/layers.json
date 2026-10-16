@@ -57,14 +57,35 @@
       "kind": "video",
       "display": "Veo 3 Fast",
       "params": {
-        "aspect_ratio": { "default": "16:9" },
-        "duration": { "default": "8s" },
-        "resolution": { "default": "720p" },
-        "generate_audio": { "default": true },
-        "auto_fix": { "default": true },
-        "safety_tolerance": { "default": "4", "range": ["1", "6"], "note": "1 strictest, 6 most permissive" },
-        "seed": { "default": null },
-        "negative_prompt": { "default": null }
+        "aspect_ratio": {
+          "default": "16:9"
+        },
+        "duration": {
+          "default": "8s"
+        },
+        "resolution": {
+          "default": "720p"
+        },
+        "generate_audio": {
+          "default": true
+        },
+        "auto_fix": {
+          "default": true
+        },
+        "safety_tolerance": {
+          "default": "4",
+          "range": [
+            "1",
+            "6"
+          ],
+          "note": "1 strictest, 6 most permissive"
+        },
+        "seed": {
+          "default": null
+        },
+        "negative_prompt": {
+          "default": null
+        }
       },
       "layers": [
         {
@@ -72,7 +93,9 @@
           "kind": "rewrite",
           "active": true,
           "detail": "If your prompt fails content policy or any other validation check, it is rewritten automatically and the generation proceeds.",
-          "disable_with": { "auto_fix": false },
+          "disable_with": {
+            "auto_fix": false
+          },
           "source": "fal.ai/models/fal-ai/veo3/fast/llms.txt",
           "evidence": "auto_fix (boolean, optional): Whether to automatically attempt to fix prompts that fail content policy or other validation checks by rewriting them. Default value: true"
         },
@@ -90,11 +113,19 @@
           "kind": "pin",
           "active": true,
           "detail": "Audio is generated unless you turn it off (billed higher: $0.10/s off, $0.15/s on).",
-          "disable_with": { "generate_audio": false },
+          "disable_with": {
+            "generate_audio": false
+          },
           "source": "fal.ai/models/fal-ai/veo3/fast/llms.txt",
           "evidence": "generate_audio (boolean): Whether to generate audio for the video. Default value: true"
         }
-      ]
+      ],
+      "accepts_image": false,
+      "reference": {
+        "accepts": false,
+        "note": "Veo 3 Fast is a text-to-video endpoint in this dataset: no image input is documented for it.",
+        "source": "fal.ai/models/fal-ai/veo3/fast/llms.txt"
+      }
     },
     "hailuo-02-standard": {
       "provider": "fal",
@@ -102,9 +133,19 @@
       "kind": "video",
       "display": "MiniMax Hailuo 02 (Standard)",
       "params": {
-        "duration": { "default": "6", "options": ["6", "10"] },
-        "prompt_optimizer": { "default": true },
-        "enable_safety_checker": { "default": true }
+        "duration": {
+          "default": "6",
+          "options": [
+            "6",
+            "10"
+          ]
+        },
+        "prompt_optimizer": {
+          "default": true
+        },
+        "enable_safety_checker": {
+          "default": true
+        }
       },
       "layers": [
         {
@@ -112,7 +153,9 @@
           "kind": "expand",
           "active": true,
           "detail": "MiniMax's own prompt optimizer rewrites your text before generation. This is the single biggest source of 'same prompt, different output' on this endpoint.",
-          "disable_with": { "prompt_optimizer": false },
+          "disable_with": {
+            "prompt_optimizer": false
+          },
           "source": "fal.ai/models/fal-ai/minimax/hailuo-02/standard/text-to-video/llms.txt + replicate.com/minimax/hailuo-02",
           "evidence": "prompt_optimizer (boolean, optional): Whether to use the model's prompt optimizer. Default value: true"
         },
@@ -121,29 +164,49 @@
           "kind": "screen",
           "active": true,
           "detail": "Safety screening runs on the prompt by default.",
-          "disable_with": { "enable_safety_checker": false },
+          "disable_with": {
+            "enable_safety_checker": false
+          },
           "source": "fal.ai/models/fal-ai/minimax/hailuo-02/standard/text-to-video/llms.txt",
           "evidence": "enable_safety_checker: Authorized callers may set false to request relaxed screening. Default value: true"
         }
-      ]
+      ],
+      "accepts_image": false,
+      "reference": {
+        "accepts": false,
+        "note": "MiniMax Hailuo 02 (Standard) is a text-to-video endpoint in this dataset: no image input is documented for it.",
+        "source": "fal.ai/models/fal-ai/minimax/hailuo-02/standard/text-to-video/llms.txt + replicate.com/minimax/hailuo-02"
+      }
     },
     "hailuo-02-pro": {
       "provider": "fal",
       "endpoint": "fal-ai/minimax/hailuo-02/pro/text-to-video",
       "kind": "video",
       "display": "MiniMax Hailuo 02 (Pro)",
-      "params": { "prompt_optimizer": { "default": true } },
+      "params": {
+        "prompt_optimizer": {
+          "default": true
+        }
+      },
       "layers": [
         {
           "id": "expand.prompt_optimizer",
           "kind": "expand",
           "active": true,
           "detail": "Same optimizer as the standard tier, on by default.",
-          "disable_with": { "prompt_optimizer": false },
+          "disable_with": {
+            "prompt_optimizer": false
+          },
           "source": "fal.ai/models/fal-ai/minimax/hailuo-02/pro/text-to-video",
           "evidence": "prompt_optimizer: Whether to use the model's prompt optimizer. Default value: true"
         }
-      ]
+      ],
+      "accepts_image": false,
+      "reference": {
+        "accepts": false,
+        "note": "MiniMax Hailuo 02 (Pro) is a text-to-video endpoint in this dataset: no image input is documented for it.",
+        "source": "fal.ai/models/fal-ai/minimax/hailuo-02/pro/text-to-video"
+      }
     },
     "ltx-2-19b": {
       "provider": "fal",
@@ -151,15 +214,33 @@
       "kind": "video",
       "display": "LTX-2 19B",
       "params": {
-        "enable_prompt_expansion": { "default": true },
-        "enable_safety_checker": { "default": true },
-        "generate_audio": { "default": true },
-        "frames": { "default": 121 },
-        "fps": { "default": 25 },
-        "guidance_scale": { "default": 3 },
-        "num_inference_steps": { "default": 40 },
-        "video_quality": { "default": "high" },
-        "video_write_mode": { "default": "balanced" }
+        "enable_prompt_expansion": {
+          "default": true
+        },
+        "enable_safety_checker": {
+          "default": true
+        },
+        "generate_audio": {
+          "default": true
+        },
+        "frames": {
+          "default": 121
+        },
+        "fps": {
+          "default": 25
+        },
+        "guidance_scale": {
+          "default": 3
+        },
+        "num_inference_steps": {
+          "default": 40
+        },
+        "video_quality": {
+          "default": "high"
+        },
+        "video_write_mode": {
+          "default": "balanced"
+        }
       },
       "layers": [
         {
@@ -167,7 +248,9 @@
           "kind": "expand",
           "active": true,
           "detail": "Your prompt is expanded by an LLM before generation.",
-          "disable_with": { "enable_prompt_expansion": false },
+          "disable_with": {
+            "enable_prompt_expansion": false
+          },
           "source": "fal.ai/models/fal-ai/ltx-2-19b/text-to-video/llms.txt",
           "evidence": "enable_prompt_expansion (boolean, optional): Whether to enable prompt expansion. Default value: true"
         },
@@ -176,11 +259,19 @@
           "kind": "augment",
           "active": true,
           "detail": "A ~200-word negative prompt is attached unless you supply your own.",
-          "disable_with": { "negative_prompt": "<your own>" },
+          "disable_with": {
+            "negative_prompt": "<your own>"
+          },
           "source": "fal.ai/models/fal-ai/ltx-2-19b/text-to-video/llms.txt",
           "evidence": "negative_prompt default: \"blurry, out of focus, overexposed, underexposed, low contrast, washed out colors, excessive noise, grainy texture, poor lighting, flickering, motion blur, distorted proportions, unnatural skin tones, deformed facial features, ... or AI artifacts.\""
         }
-      ]
+      ],
+      "accepts_image": false,
+      "reference": {
+        "accepts": false,
+        "note": "LTX-2 19B is a text-to-video endpoint in this dataset: no image input is documented for it.",
+        "source": "fal.ai/models/fal-ai/ltx-2-19b/text-to-video/llms.txt"
+      }
     },
     "kling-v2.1-master": {
       "provider": "fal",
@@ -188,9 +279,15 @@
       "kind": "video",
       "display": "Kling 2.1 Master",
       "params": {
-        "duration": { "default": "5" },
-        "aspect_ratio": { "default": "16:9" },
-        "negative_prompt": { "default": "blur, distort, and low quality" }
+        "duration": {
+          "default": "5"
+        },
+        "aspect_ratio": {
+          "default": "16:9"
+        },
+        "negative_prompt": {
+          "default": "blur, distort, and low quality"
+        }
       },
       "layers": [
         {
@@ -198,11 +295,19 @@
           "kind": "augment",
           "active": true,
           "detail": "Kling silently appends its own negative prompt. It is a placeholder, not a considered choice — replace it.",
-          "disable_with": { "negative_prompt": "<your own>" },
+          "disable_with": {
+            "negative_prompt": "<your own>"
+          },
           "source": "fal.ai/models/fal-ai/kling-video/v2.1/master/text-to-video/llms.txt",
           "evidence": "negative_prompt (string, optional): Default value: \"blur, distort, and low quality\""
         }
-      ]
+      ],
+      "accepts_image": false,
+      "reference": {
+        "accepts": false,
+        "note": "Kling 2.1 Master is a text-to-video endpoint in this dataset: no image input is documented for it.",
+        "source": "fal.ai/models/fal-ai/kling-video/v2.1/master/text-to-video/llms.txt"
+      }
     },
     "kling-v2.5-turbo-pro": {
       "provider": "fal",
@@ -210,9 +315,15 @@
       "kind": "video",
       "display": "Kling 2.5 Turbo Pro",
       "params": {
-        "duration": { "default": "5" },
-        "aspect_ratio": { "default": "16:9" },
-        "negative_prompt": { "default": "blur, distort, and low quality" }
+        "duration": {
+          "default": "5"
+        },
+        "aspect_ratio": {
+          "default": "16:9"
+        },
+        "negative_prompt": {
+          "default": "blur, distort, and low quality"
+        }
       },
       "layers": [
         {
@@ -220,11 +331,19 @@
           "kind": "augment",
           "active": true,
           "detail": "Same canned negative prompt as 2.1.",
-          "disable_with": { "negative_prompt": "<your own>" },
+          "disable_with": {
+            "negative_prompt": "<your own>"
+          },
           "source": "fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/kling-video/v2.5-turbo/pro/text-to-video",
           "evidence": "negative_prompt default: \"blur, distort, and low quality\""
         }
-      ]
+      ],
+      "accepts_image": false,
+      "reference": {
+        "accepts": false,
+        "note": "Kling 2.5 Turbo Pro is a text-to-video endpoint in this dataset: no image input is documented for it.",
+        "source": "fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/kling-video/v2.5-turbo/pro/text-to-video"
+      }
     },
     "pika-v2.2": {
       "provider": "fal",
@@ -232,10 +351,18 @@
       "kind": "video",
       "display": "Pika 2.2",
       "params": {
-        "duration": { "default": 5 },
-        "resolution": { "default": "720p" },
-        "aspect_ratio": { "default": "16:9" },
-        "negative_prompt": { "default": "ugly, bad, terrible" }
+        "duration": {
+          "default": 5
+        },
+        "resolution": {
+          "default": "720p"
+        },
+        "aspect_ratio": {
+          "default": "16:9"
+        },
+        "negative_prompt": {
+          "default": "ugly, bad, terrible"
+        }
       },
       "layers": [
         {
@@ -243,11 +370,19 @@
           "kind": "augment",
           "active": true,
           "detail": "Pika's canned negative prompt, attached unless overridden.",
-          "disable_with": { "negative_prompt": "<your own>" },
+          "disable_with": {
+            "negative_prompt": "<your own>"
+          },
           "source": "fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/pika/v2.2/text-to-video",
           "evidence": "negative_prompt default: \"ugly, bad, terrible\""
         }
-      ]
+      ],
+      "accepts_image": false,
+      "reference": {
+        "accepts": false,
+        "note": "Pika 2.2 is a text-to-video endpoint in this dataset: no image input is documented for it.",
+        "source": "fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/pika/v2.2/text-to-video"
+      }
     },
     "seedance-v1-pro": {
       "provider": "fal",
@@ -255,10 +390,18 @@
       "kind": "video",
       "display": "Seedance 1.0 Pro",
       "params": {
-        "aspect_ratio": { "default": "16:9" },
-        "resolution": { "default": "1080p" },
-        "duration": { "default": "5" },
-        "enable_safety_checker": { "default": true }
+        "aspect_ratio": {
+          "default": "16:9"
+        },
+        "resolution": {
+          "default": "1080p"
+        },
+        "duration": {
+          "default": "5"
+        },
+        "enable_safety_checker": {
+          "default": true
+        }
       },
       "layers": [
         {
@@ -275,11 +418,19 @@
           "kind": "pin",
           "active": true,
           "detail": "1080p is the default; each 1080p 5s clip costs roughly $0.62 on this endpoint.",
-          "disable_with": { "resolution": "720p" },
+          "disable_with": {
+            "resolution": "720p"
+          },
           "source": "fal.ai/models/fal-ai/bytedance/seedance/v1/pro/text-to-video/llms.txt",
           "evidence": "resolution default \"1080p\"; \"Each 1080p 5 second video costs roughly $0.62\""
         }
-      ]
+      ],
+      "accepts_image": false,
+      "reference": {
+        "accepts": false,
+        "note": "Seedance 1.0 Pro is a text-to-video endpoint in this dataset: no image input is documented for it.",
+        "source": "fal.ai/models/fal-ai/bytedance/seedance/v1/pro/text-to-video/llms.txt"
+      }
     },
     "seedance-v1-lite": {
       "provider": "fal",
@@ -287,10 +438,18 @@
       "kind": "video",
       "display": "Seedance 1.0 Lite",
       "params": {
-        "aspect_ratio": { "default": "16:9" },
-        "resolution": { "default": "720p" },
-        "duration": { "default": "5" },
-        "enable_safety_checker": { "default": true }
+        "aspect_ratio": {
+          "default": "16:9"
+        },
+        "resolution": {
+          "default": "720p"
+        },
+        "duration": {
+          "default": "5"
+        },
+        "enable_safety_checker": {
+          "default": true
+        }
       },
       "layers": [
         {
@@ -302,7 +461,13 @@
           "source": "fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/bytedance/seedance/v1/lite/text-to-video",
           "evidence": "enable_safety_checker default: true; resolution default 720p"
         }
-      ]
+      ],
+      "accepts_image": false,
+      "reference": {
+        "accepts": false,
+        "note": "Seedance 1.0 Lite is a text-to-video endpoint in this dataset: no image input is documented for it.",
+        "source": "fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/bytedance/seedance/v1/lite/text-to-video"
+      }
     },
     "wan-2.2-a14b": {
       "provider": "fal",
@@ -310,11 +475,21 @@
       "kind": "video",
       "display": "Wan 2.2 A14B",
       "params": {
-        "enable_prompt_expansion": { "default": false },
-        "resolution": { "default": "720p" },
-        "aspect_ratio": { "default": "16:9" },
-        "negative_prompt": { "default": "" },
-        "seed": { "default": null }
+        "enable_prompt_expansion": {
+          "default": false
+        },
+        "resolution": {
+          "default": "720p"
+        },
+        "aspect_ratio": {
+          "default": "16:9"
+        },
+        "negative_prompt": {
+          "default": ""
+        },
+        "seed": {
+          "default": null
+        }
       },
       "layers": [
         {
@@ -322,27 +497,185 @@
           "kind": "expand",
           "active": false,
           "detail": "LLM prompt expansion exists here but is OFF by default — this endpoint forwards your wording as-is unless you enable it. Use it when you want the model to fill in film detail for you.",
-          "disable_with": { "enable_prompt_expansion": false },
+          "disable_with": {
+            "enable_prompt_expansion": false
+          },
           "source": "fal.ai/models/fal-ai/wan/v2.2-a14b/text-to-video (schema)",
           "evidence": "enable_prompt_expansion (boolean): Whether to enable prompt expansion. This will use a large language model to expand the prompt with additional details while maintaining the original meaning. Default value: false"
         }
-      ]
+      ],
+      "accepts_image": false,
+      "reference": {
+        "accepts": false,
+        "note": "Wan 2.2 A14B is a text-to-video endpoint in this dataset: no image input is documented for it.",
+        "source": "fal.ai/models/fal-ai/wan/v2.2-a14b/text-to-video (schema)"
+      }
     },
     "gpt-4o-mini": {
       "provider": "openai",
       "endpoint": "chat/completions",
       "kind": "chat",
       "display": "GPT-4o mini (chat)",
-      "params": { "temperature": { "default": null }, "top_p": { "default": null } },
+      "params": {
+        "temperature": {
+          "default": null
+        },
+        "top_p": {
+          "default": null
+        }
+      },
       "layers": [
         {
           "id": "serving.system_message",
           "kind": "inject",
           "active": true,
           "detail": "If you send no system message, the serving stack's chat template supplies one. Set your own system message to take control of that slot.",
-          "disable_with": { "system_message": "<your own>" },
+          "disable_with": {
+            "system_message": "<your own>"
+          },
           "source": "huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct/raw/main/tokenizer_config.json",
           "evidence": "chat_template: {% if loop.first and message['role'] != 'system' %}<|im_start|>system You are a helpful assistant.<|im_end|>{% endif %} — see generic_layers[serving.system_message]"
+        }
+      ],
+      "accepts_image": false,
+      "reference": {
+        "accepts": false,
+        "note": "GPT-4o mini (chat) is a text-to-video endpoint in this dataset: no image input is documented for it.",
+        "source": "huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct/raw/main/tokenizer_config.json"
+      }
+    },
+    "hailuo-02-i2v": {
+      "provider": "fal",
+      "endpoint": "fal-ai/minimax/hailuo-02/standard/image-to-video",
+      "kind": "video",
+      "display": "MiniMax Hailuo 02 (image-to-video)",
+      "accepts_image": true,
+      "reference": {
+        "accepts": true,
+        "field": "first_frame_image (and last_frame_image)",
+        "constraints": "resolution default 768P; duration default 6s",
+        "note": "The image is the first frame (or the last, if you set last_frame_image). Describe only what moves.",
+        "source": "fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/minimax/hailuo-02/standard/image-to-video + replicate.com/minimax/hailuo-02",
+        "evidence": "Input schema carries first_frame_image and last_frame_image; 'The first frame image for video generation. The output video will have the same aspect ratio as this image.'"
+      },
+      "params": {
+        "resolution": {
+          "default": "768P"
+        },
+        "duration": {
+          "default": "6"
+        },
+        "prompt_optimizer": {
+          "default": true
+        }
+      },
+      "layers": [
+        {
+          "id": "expand.prompt_optimizer",
+          "kind": "expand",
+          "active": true,
+          "detail": "The optimizer rewrites your motion description too — which matters most on image-to-video, where the wording should only describe change.",
+          "disable_with": {
+            "prompt_optimizer": false
+          },
+          "source": "fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/minimax/hailuo-02/standard/image-to-video",
+          "evidence": "prompt_optimizer (boolean): Whether to use the model's prompt optimizer. Default value: true"
+        },
+        {
+          "id": "pin.aspect_from_image",
+          "kind": "pin",
+          "active": true,
+          "detail": "The output aspect ratio follows the reference image, not a parameter — so a square still gives a square clip.",
+          "disable_with": null,
+          "source": "replicate.com/minimax/hailuo-02",
+          "evidence": "'first_frame_image ... The output video will have the same aspect ratio as this image.'"
+        }
+      ]
+    },
+    "wan-2.2-a14b-i2v": {
+      "provider": "fal",
+      "endpoint": "fal-ai/wan/v2.2-a14b/image-to-video",
+      "kind": "video",
+      "display": "Wan 2.2 A14B (image-to-video)",
+      "accepts_image": true,
+      "reference": {
+        "accepts": true,
+        "field": "image (conditioning frame)",
+        "constraints": "resolution default 720p; aspect_ratio default 'auto' (follows the image)",
+        "note": "Wan's own I2V expander is written for this: keep the image's content, describe only the dynamics.",
+        "source": "fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/wan/v2.2-a14b/image-to-video",
+        "evidence": "Input schema: aspect_ratio default 'auto', resolution default '720p', enable_prompt_expansion default false."
+      },
+      "params": {
+        "enable_prompt_expansion": {
+          "default": false
+        },
+        "resolution": {
+          "default": "720p"
+        },
+        "aspect_ratio": {
+          "default": "auto"
+        },
+        "negative_prompt": {
+          "default": ""
+        }
+      },
+      "layers": [
+        {
+          "id": "expand.prompt_expansion",
+          "kind": "expand",
+          "active": false,
+          "detail": "Off by default here, which suits image-to-video: the expander is the image-aware one (see the Compile tab), and it only describes motion.",
+          "disable_with": {
+            "enable_prompt_expansion": false
+          },
+          "source": "fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/wan/v2.2-a14b/image-to-video",
+          "evidence": "enable_prompt_expansion (boolean): Whether to enable prompt expansion. Default value: false"
+        }
+      ]
+    },
+    "sora-2": {
+      "provider": "openai",
+      "endpoint": "POST /v1/videos",
+      "kind": "video",
+      "display": "Sora 2 (input_reference)",
+      "accepts_image": true,
+      "reference": {
+        "accepts": true,
+        "field": "input_reference",
+        "constraints": "must match the target video resolution (size); image/jpeg, image/png or image/webp",
+        "note": "The image anchors the first frame; the prompt then defines what happens next.",
+        "source": "developers.openai.com/cookbook/examples/sora/sora2_prompting_guide",
+        "evidence": "'Include an image file as the input_reference parameter in your POST /videos request. The image must match the target video's resolution (size). Supported file formats are image/jpeg, image/png, and image/webp.'"
+      },
+      "params": {
+        "size": {
+          "default": "720x1280 or 1280x720"
+        },
+        "seconds": {
+          "default": "4",
+          "options": [
+            "4",
+            "8",
+            "12",
+            "16",
+            "20"
+          ]
+        },
+        "characters": {
+          "default": null,
+          "note": "up to 2 reusable characters from a 2-4s reference clip"
+        }
+      },
+      "layers": [
+        {
+          "id": "reference.must_match_resolution",
+          "kind": "pin",
+          "active": true,
+          "detail": "A reference image whose dimensions differ from the target size is rejected rather than resized for you.",
+          "disable_with": null,
+          "source": "developers.openai.com/cookbook/examples/sora/sora2_prompting_guide",
+          "evidence": "'The image must match the target video's resolution (size).'"
         }
       ]
     }

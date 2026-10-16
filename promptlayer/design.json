@@ -1,0 +1,248 @@
+{
+  "version": "2026-10-16",
+  "note": "Design vocabulary and the checks that decide whether a prompt is likely to produce a good clip. Every entry cites where it came from; nothing here is a style opinion of this project's own.",
+  "sources": {
+    "sora": "Sora 2 Prompting Guide (OpenAI cookbook) — developers.openai.com/cookbook/examples/sora/sora2_prompting_guide",
+    "veo": "Veo video generation prompt guide (Google Cloud) — cloud.google.com/vertex-ai/generative-ai/docs/video/video-gen-prompt-guide",
+    "veo_bp": "Best practices for generating videos (Google Cloud) — cloud.google.com/vertex-ai/generative-ai/docs/video/best-practice",
+    "wan_director": "Wan 2.2 wan/utils/system_prompt.py (T2V_A14B_EN_SYS_PROMPT) — github.com/Wan-Video/Wan2.2",
+    "wan_engineer": "Wan 2.1 wan/utils/prompt_extend.py (LM_EN_SYS_PROMPT) — github.com/Wan-Video/Wan2.1",
+    "wan_i2v": "Wan 2.2 wan/utils/system_prompt.py (I2V_A14B_EN_SYS_PROMPT) — github.com/Wan-Video/Wan2.2",
+    "hunyuan": "HunyuanVideo hyvideo/prompt_rewrite.py — github.com/Tencent-Hunyuan/HunyuanVideo",
+    "kandinsky": "Kandinsky-3 README, 'Prompt beautification' — github.com/ai-forever/Kandinsky-3"
+  },
+  "vocab": {
+    "camera_move": {
+      "label": "Camera move — exactly one",
+      "source": "veo",
+      "evidence": "Camera movements: static shot, pan (left/right), tilt (up/down), dolly (in/out), truck (left/right), pedestal (up/down), zoom (in/out), crane shot, aerial shot, handheld, whip pan, arc shot.",
+      "items": ["static shot", "slow pan left", "slow pan right", "tilt up", "tilt down", "dolly in", "dolly out", "truck left", "truck right", "pedestal up", "pedestal down", "slow zoom in", "slow zoom out", "crane shot", "aerial drone shot", "handheld", "whip pan", "arc shot"]
+    },
+    "shot_size": {
+      "label": "Shot size",
+      "source": "wan_director",
+      "evidence": "镜头尺寸 defaults: '若无特殊要求，默认选择 Medium shot 或 Wide shot' — if nothing is specified, Medium or Wide is chosen for you.",
+      "items": ["wide shot", "medium wide shot", "medium shot", "medium close-up shot", "close-up shot", "extreme close-up shot", "extreme wide shot"]
+    },
+    "lens": {
+      "label": "Lens / optics",
+      "source": "veo",
+      "evidence": "Lens and optical effects: wide-angle, telephoto, shallow depth of field (bokeh), deep depth of field, lens flare, rack focus, fisheye, vertigo effect (dolly zoom). 'Some advanced camera lenses are not officially supported.'",
+      "items": ["35mm spherical lens", "50mm spherical lens", "wide-angle lens", "telephoto lens", "shallow depth of field", "deep depth of field", "lens flare", "rack focus", "anamorphic widescreen"]
+    },
+    "light_source": {
+      "label": "Light source",
+      "source": "wan_director",
+      "evidence": "光源: Daylight, Artificial lighting, Moonlight, Practical lighting, Firelight, Fluorescent lighting, Overcast lighting, Sunny lighting — '根据室内室外及prompt内容选定义光源' (inferred from the scene).",
+      "items": ["daylight", "artificial lighting", "moonlight", "practical lighting", "firelight", "fluorescent lighting", "overcast lighting", "sunny lighting"]
+    },
+    "light_quality": {
+      "label": "Light quality and angle",
+      "source": "wan_director",
+      "evidence": "光线强度: Soft lighting, Hard lighting. 光线角度: Top lighting, Side lighting, Underlighting, Edge lighting.",
+      "items": ["soft lighting", "hard lighting", "top lighting", "side lighting", "underlighting", "edge lighting"]
+    },
+    "tone": {
+      "label": "Colour tone",
+      "source": "wan_director",
+      "evidence": "色调: Warm colors, Cool colors, Mixed colors.",
+      "items": ["warm colors", "cool colors", "mixed colors"]
+    },
+    "time_of_day": {
+      "label": "Time of day",
+      "source": "wan_director",
+      "evidence": "时间: Day time, Night time, Dawn time, Sunrise time — '如果prompt没有特别说明则选 Day time!!!' (Day time is the default if you say nothing).",
+      "default_when_unspecified": "Day time",
+      "items": ["Day time", "Night time", "Dawn time", "Sunrise time"]
+    },
+    "composition": {
+      "label": "Composition",
+      "source": "wan_director",
+      "evidence": "构图: Center composition, Balanced composition, Right-heavy composition, Left-heavy composition, Symmetrical composition, Short-side composition — '若无特殊要求，默认选择Center composition'.",
+      "default_when_unspecified": "Center composition",
+      "items": ["Center composition", "Balanced composition", "Right-heavy composition", "Left-heavy composition", "Symmetrical composition", "Short-side composition"]
+    },
+    "style": {
+      "label": "Look / format",
+      "source": "sora",
+      "evidence": "Style is one of the most powerful levers: '1970s film', 'epic, IMAX-scale scene', '16mm black-and-white film'. 'Establish this style early so the model can carry it through consistently.'",
+      "items": ["shot on 35mm film", "1970s film look", "16mm black-and-white film", "IMAX-scale cinematic", "handheld smartphone clip", "digital capture emulating 65mm photochemical contrast", "hand-painted 2D/3D hybrid animation", "film noir, deep shadows"]
+    },
+    "negative": {
+      "label": "Negative prompt — nouns only",
+      "source": "veo",
+      "evidence": "Negative prompts: 'Not recommended: using instructive language or words such as \"no\" or \"don't\"... Recommended: describe what you don't want to see. For example, \"wall, frame\".'",
+      "items": ["text overlays", "watermarks", "logos", "subtitles", "extra fingers", "extra limbs", "warped hands", "distorted faces", "morphing", "flicker", "jitter", "duplicate subjects", "blurry", "low resolution", "oversaturated", "overexposed", "underexposed", "wax skin", "dead eyes", "plastic-looking skin", "AI artifacts", "cartoonish rendering", "3D CGI look", "camera shake", "background clutter"]
+    },
+    "audio": {
+      "label": "Audio",
+      "source": "sora",
+      "evidence": "Dialogue must be described in the prompt, in a block below the prose, with short natural lines labelled by speaker. 'If your shot is silent, you can still suggest pacing with one small sound... Think of it as a rhythm cue rather than a full soundtrack.'",
+      "items": ["diegetic sound only, no score", "ambient city hum", "rain on the window", "distant traffic hiss", "a single crisp snap", "fabric rustle", "no added score"]
+    }
+  },
+  "checks": [
+    {
+      "id": "params_in_prose",
+      "severity": "warn",
+      "title": "Resolution, duration or aspect requested in the prompt text",
+      "why": "These are API parameters. The model will not change them because you asked in prose.",
+      "fix": "Move it to the parameter block (size / seconds / aspect_ratio) and delete it from the prompt.",
+      "patterns": ["\\b\\d+\\s*(?:s|sec|secs|seconds)\\b", "\\b(?:720|1080|4k|2160)p\\b", "\\b\\d+\\s*:\\s*\\d+\\b", "make it longer", "higher (?:resolution|quality)", "vertical|portrait orientation|landscape orientation"],
+      "source": "sora",
+      "evidence": "'The prompt controls the content of the video, but certain attributes are governed only by API parameters. You cannot request them in prose, they must be set explicitly in your API call.'"
+    },
+    {
+      "id": "slop_adjectives",
+      "severity": "warn",
+      "title": "Words that describe a feeling instead of a picture",
+      "why": "The model cannot see 'beautiful'. It can see wet asphalt and neon reflections.",
+      "fix": "Replace each one with what the camera would actually record.",
+      "patterns": ["\\bbeaut(?:y|iful)\\b", "\\bstunning\\b", "\\bepic\\b", "\\bamazing\\b", "\\bmasterpiece\\b", "\\bultra[ -]?detailed\\b", "\\bhighly detailed\\b", "\\b8k\\b", "\\bbest quality\\b", "\\bperfect\\b", "\\bmind-?blowing\\b"],
+      "source": "sora",
+      "evidence": "Weak: 'A beautiful street at night'. Strong: 'Wet asphalt, zebra crosswalk, neon signs reflecting in puddles'. 'Clarity wins... Verbs and nouns that point to visible results will always give you a clearer, more consistent output.'"
+    },
+    {
+      "id": "bare_cinematic",
+      "severity": "info",
+      "title": "'Cinematic' with no technical reason",
+      "why": "On its own it is a feeling. Cinema comes from lens, light and grade.",
+      "fix": "Name the lens, the lighting and the grade — or drop the word.",
+      "patterns": ["\\bcinematic(?:ally)?\\b"],
+      "unless": ["mm", "lens", "lighting", "backlight", "rim", "halation", "grade", "anamorphic", "depth of field", "film"],
+      "source": "sora",
+      "evidence": "Weak: 'Camera shot: cinematic look'. Strong: 'wide shot, low angle / shallow DOF / warm backlight with soft rim'."
+    },
+    {
+      "id": "multi_shot",
+      "severity": "warn",
+      "title": "More than one scene in a short clip",
+      "why": "Chaining A then B then C in one short video usually produces something muddled.",
+      "fix": "Keep one moment per clip; generate the second beat as its own clip and stitch.",
+      "patterns": ["\\bthen\\b[^.]{0,60}\\bthen\\b", "\\bcut to\\b", "\\bafter that\\b", "\\bsecond scene\\b", "\\bfollowed by\\b"],
+      "source": "veo_bp",
+      "evidence": "'For short videos, dedicate each prompt to a single, focused moment. Trying to chain multiple distinct events (A then B then C) in one prompt for a short video often leads to muddled or incomplete videos.'"
+    },
+    {
+      "id": "camera_conflict",
+      "severity": "error",
+      "title": "Two camera moves, or opposing ones",
+      "why": "One shot has one camera move. Opposing moves fight each other and the frame wobbles.",
+      "fix": "Keep the single move that serves the shot and delete the others.",
+      "opposing_pairs": [["dolly in", "dolly out"], ["pan left", "pan right"], ["tilt up", "tilt down"], ["truck left", "truck right"], ["zoom in", "zoom out"], ["pedestal up", "pedestal down"]],
+      "max_moves": 1,
+      "source": "wan_director",
+      "evidence": "拍摄角度: '若原始prompt中有运镜的描述，则取消添加此项' — if the prompt already has a camera move, the director prompt adds none. Sora: 'Each shot should have one clear camera move and one clear subject action.'"
+    },
+    {
+      "id": "vague_action",
+      "severity": "info",
+      "title": "Action with no beats",
+      "why": "Motion is the hardest part to get right; vague verbs leave the model to improvise timing.",
+      "fix": "Describe the action in beats, with counts or timings.",
+      "patterns": ["\\bwalks? across the room\\b", "\\bmoves? (?:around|quickly)\\b", "\\bdoes something\\b", "\\bacts naturally\\b", "\\bmoves gracefully\\b"],
+      "source": "sora",
+      "evidence": "Weak: 'Actor walks across the room'. Strong: 'Actor takes four steps to the window, pauses, and pulls the curtain in the final second.'"
+    },
+    {
+      "id": "no_lighting",
+      "severity": "info",
+      "title": "No lighting described",
+      "why": "Light sets the mood more than the action does, and it is what holds a multi-clip edit together.",
+      "fix": "Add light direction and quality, plus three to five colour anchors.",
+      "patterns": ["\\blight(?:ing)?\\b", "\\bbacklit\\b", "\\brim light\\b", "\\bgolden hour\\b", "\\bneon\\b", "\\bbloom\\b"],
+      "require_absent": true,
+      "source": "sora",
+      "evidence": "Weak: 'Lighting + palette: brightly lit room'. Strong: 'soft window light with warm lamp fill, cool rim from hallway. Palette anchors: amber, cream, walnut brown.'"
+    },
+    {
+      "id": "quoted_dialogue",
+      "severity": "warn",
+      "title": "Speech in quotation marks",
+      "why": "Quotes tend to make the model render the words as on-screen text.",
+      "fix": "Use a colon after the speaker's action instead: 'A woman says: My name is Clara.'",
+      "patterns": ["\"[^\"]{2,}\"", "“[^”]{2,}”"],
+      "source": "veo_bp",
+      "evidence": "'To prevent the model from rendering text in the video, use a colon (:) after the speaker's action to denote speech and avoid using quotation marks.'"
+    },
+    {
+      "id": "dialogue_too_long",
+      "severity": "warn",
+      "title": "More speech than the clip can hold",
+      "why": "A four-second shot fits one or two short exchanges; longer speeches break the pacing and the lip sync.",
+      "fix": "Cut the lines down, or lengthen the clip.",
+      "max_words_in_quotes": 14,
+      "source": "sora",
+      "evidence": "'A 4-second shot will usually accommodate one or two short exchanges, while an 8-second clip can support a few more. Long, complex speeches are unlikely to sync well.'"
+    },
+    {
+      "id": "negatives_in_prose",
+      "severity": "info",
+      "title": "Negative phrasing inside the prompt",
+      "why": "Negative prompts work as noun lists. 'No walls' reads as an instruction about walls.",
+      "fix": "Put the unwanted nouns in the negative prompt field: 'wall, frame'.",
+      "patterns": ["\\bdon'?t (?:show|include|add|use)\\b", "\\bno (?:text|watermark|logo|people|blur|walls?)\\b", "\\bwithout any\\b", "\\bavoid \\w+ing\\b"],
+      "source": "veo",
+      "evidence": "Negative prompts: 'Not recommended: using instructive language or words such as \"no\" or \"don't\". For example, avoid prompts such as \"no walls\" or \"don't show walls\". Recommended: describe what you don't want to see... \"wall, frame\".'"
+    },
+    {
+      "id": "mood_literature",
+      "severity": "info",
+      "title": "Prose about the feeling of the scene",
+      "why": "The models that expand prompts are explicitly told to leave this out; it costs you tokens and adds nothing the camera can record.",
+      "fix": "Say what happens and how it looks. Cut the atmosphere sentence.",
+      "patterns": ["\\bfeels? (?:tense|alive|cinematic|emotional)\\b", "\\batmosphere of\\b", "\\bmood is\\b", "\\bsense of (?:dread|wonder|joy)\\b", "\\b充满.*张力\\b"],
+      "source": "wan_director",
+      "evidence": "Rule 3: '不要输出关于氛围、感觉等文学描写' — do not output literary descriptions of atmosphere or feeling."
+    },
+    {
+      "id": "no_motion",
+      "severity": "warn",
+      "title": "Nothing moves",
+      "why": "A video model needs motion to animate. A static description of a beautiful object gives it almost nothing to do.",
+      "fix": "Add one action, or at least a background movement: drifting cloud, wind in leaves, steam.",
+      "has_motion_hint": true,
+      "source": "wan_director",
+      "evidence": "Rule 4: describe how the motion happens; if there is no action, add one, and background elements may carry suitable motion too."
+    },
+    {
+      "id": "length",
+      "severity": "info",
+      "title": "Prompt length is outside the range the model owners target",
+      "why": "Wan's expander aims at 80–100 words. Very long prompts restrict the model's own choices; very short ones leave everything open.",
+      "fix": "Aim for one paragraph that covers subject, action, camera, light and sound.",
+      "too_short_words": 25,
+      "too_long_words": 160,
+      "source": "wan_engineer",
+      "evidence": "Rule 7: 'The revised prompt should be around 80-100 words long.' Sora: 'Longer, more detailed prompts restrict the model's creativity.'"
+    }
+  ],
+  "image_reference": {
+    "source": "sora",
+    "evidence": "Image input: 'Include an image file as the input_reference parameter... The image must match the target video's resolution (size). Supported file formats are image/jpeg, image/png, and image/webp.' Characters API: upload a 2-4s, 720p-1080p, 16:9 or 9:16 MP4 to reuse a character; 'We recommend no more than 2 characters per generation.'",
+    "rules": [
+      "An image locks composition, wardrobe and look. Put your effort into the image, then describe only what changes in it.",
+      "Describe motion and camera only — never re-describe what is already visible in the frame.",
+      "The image must match the target resolution, and it becomes the first frame unless the model says otherwise.",
+      "Keep the subject wording identical across shots; that is what holds continuity together."
+    ],
+    "motion_only_rule": {
+      "source": "wan_i2v",
+      "evidence": "I2V prompt: 'Your rewritten video description should retain the dynamic parts of the provided prompts, focusing on the main subject's actions... Retain and emphasize descriptions of camera movements.'"
+    }
+  },
+  "templates": {
+    "labelled": {
+      "label": "Labelled blocks (OpenAI's documented shape)",
+      "source": "sora",
+      "evidence": "Prompt template: '[Prose scene description...] Cinematography: Camera shot: / Mood: / Actions: - ... Dialogue: ...'",
+      "order": ["prose", "Cinematography", "Lens", "Lighting", "Palette", "Actions", "Dialogue", "Background Sound"]
+    },
+    "inline": {
+      "label": "One compact paragraph",
+      "source": "wan_engineer",
+      "evidence": "The Wan expander rewrites into a single 80-100 word paragraph rather than labelled blocks.",
+      "order": ["prose", "Camera", "Lighting", "Palette", "Sound"]
+    }
+  }
+}
