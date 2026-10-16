@@ -73,3 +73,95 @@ def validate_prompt(handler: Any, value: Any) -> Optional[str]:
         send_error_json(handler, 400, f"Prompt must be <= {MAX_PROMPT} characters")
         return None
     return value
+
+
+MAX_SECONDS = 600
+
+
+def seconds_field(handler: Any, value: Any, field: str) -> Optional[float]:
+    """A clip length the caller sent, or None. A non-number is refused, not cast.
+
+    `float("abc")` raises, and an unhandled raise inside a handler closes the
+    connection — the client sees a 502 with no explanation rather than a 400 that
+    says which field was wrong.
+    """
+    if value is None or value == "":
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        send_error_json(handler, 400, f"Field '{field}' must be a number of seconds")
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        send_error_json(handler, 400, f"Field '{field}' must be a number of seconds")
+        return None
+    if not 0 < number <= MAX_SECONDS:
+        send_error_json(handler, 400,
+                        f"Field '{field}' must be between 0 and {MAX_SECONDS} seconds")
+        return None
+    return number
+
+
+def object_field(handler: Any, value: Any, field: str) -> bool:
+    """True when the field is absent or an object; sends a 400 and returns False otherwise."""
+    if value is None or isinstance(value, dict):
+        return True
+    send_error_json(handler, 400, f"Field '{field}' must be an object")
+    return False
+
+
+def list_field(handler: Any, value: Any, field: str) -> bool:
+    """True when the field is absent or a list; sends a 400 and returns False otherwise."""
+    if value is None or isinstance(value, list):
+        return True
+    send_error_json(handler, 400, f"Field '{field}' must be a list")
+    return False
+
+
+def string_field(handler: Any, value: Any, field: str) -> bool:
+    """True when the field is absent or a string; sends a 400 and returns False otherwise."""
+    if value is None or isinstance(value, str):
+        return True
+    send_error_json(handler, 400, f"Field '{field}' must be a string")
+    return False
+
+
+def design_field(handler: Any, value: Any) -> bool:
+    """Validate the documented shape of a 'design' object; False means a 400 was sent.
+
+    The library tolerates a malformed shape so it can never crash, but the API is
+    the boundary where the caller can be told: a `selections` that is not an object
+    or a `negative` that is not a list is a bug in the client, and saying so is more
+    use than quietly dropping it.
+    """
+    if not object_field(handler, value, "design"):
+        return False
+    if not isinstance(value, dict):
+        return True
+    if not object_field(handler, value.get("selections"), "design.selections"):
+        return False
+    if not list_field(handler, value.get("negative"), "design.negative"):
+        return False
+    for key in ("palette", "template"):
+        if not string_field(handler, value.get(key), f"design.{key}"):
+            return False
+    return True
+
+
+def seconds_fields(handler: Any, body: Dict[str, Any], *fields: str) -> Optional[Dict[str, float]]:
+    """Validate a group of seconds fields at once.
+
+    None means a field was rejected and the 400 has already been sent, so the
+    caller must stop rather than build a response and send a second one. A field
+    the caller did not send is simply absent from the result.
+    """
+    out: Dict[str, float] = {}
+    for field in fields:
+        value = body.get(field)
+        number = seconds_field(handler, value, field)
+        if number is None:
+            if value not in (None, ""):
+                return None
+            continue
+        out[field] = number
+    return out

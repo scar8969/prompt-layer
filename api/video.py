@@ -36,7 +36,15 @@ from promptlayer import (  # noqa: E402
     model_detail,
     model_list,
 )
-from promptlayer.http import read_json, send_error_json, send_json  # noqa: E402
+from promptlayer.http import (  # noqa: E402
+    design_field,
+    list_field,
+    object_field,
+    read_json,
+    seconds_fields,
+    send_error_json,
+    send_json,
+)
 
 
 def _storyboard(handler, body, detail=None, images=None):
@@ -62,20 +70,27 @@ def _storyboard(handler, body, detail=None, images=None):
                         "Send either 'storyboard' (from /api/storyboard) or 'concept'")
         return None
     model = body.get("model")
-    design = body.get("design") if isinstance(body.get("design"), dict) else None
+    if not design_field(handler, body.get("design")):
+        return None
+    if not object_field(handler, body.get("answers"), "answers"):
+        return None
+    design = body.get("design")
     # `/api/improve` and `/api/storyboard` both take palette/template at the top
     # level; accept them here too rather than ignoring a field the caller sent.
     if body.get("palette") and not (design or {}).get("palette"):
         design = {**(design or {}), "palette": body["palette"]}
     if body.get("template") and not (design or {}).get("template"):
         design = {**(design or {}), "template": body["template"]}
-    answers = body.get("answers") if isinstance(body.get("answers"), dict) else None
+    answers = body.get("answers")
     # The reference images have to reach the scenes, not only the plan: a scene
     # is what carries the image field, so building it without them would drop
     # the image between the request and the body.
+    seconds = seconds_fields(handler, body, "total_seconds", "scene_seconds")
+    if seconds is None:
+        return None
     return build_scenes(concept, model=model, model_detail=detail, design=design,
-                        total_seconds=body.get("total_seconds"),
-                        scene_seconds=body.get("scene_seconds"),
+                        total_seconds=seconds.get("total_seconds"),
+                        scene_seconds=seconds.get("scene_seconds"),
                         aspect=body.get("aspect"), answers=answers,
                         references=images,
                         template=(design or {}).get("template") or "inline")
@@ -113,6 +128,8 @@ class handler(BaseHTTPRequestHandler):
                 "Pick a video endpoint, or use Preflight/Improve for this one.",
                 kind=detail.get("kind"), video_models=[
                     m["slug"] for m in model_list() if m.get("kind") == "video"])
+        if not list_field(self, body.get("references"), "references"):
+            return
         references = body.get("references")
         ref_set = build_reference_set(references, detail) if references else None
         images = (ref_set or {}).get("images")

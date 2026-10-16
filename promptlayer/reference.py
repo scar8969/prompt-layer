@@ -114,7 +114,12 @@ def build_reference_set(raw_images: Any, model_detail: Optional[Dict[str, Any]] 
     """Validate the set, check it against the endpoint, and build the palette line."""
     images: List[Dict[str, Any]] = []
     dropped: List[str] = []
-    for index, raw in enumerate(list(raw_images or [])[:MAX_IMAGES], start=1):
+    # A caller that sent something other than a list sent no images: `list(7)`
+    # raises, and `list("no")` silently becomes two unusable entries.
+    entries = raw_images[:MAX_IMAGES] if isinstance(raw_images, list) else []
+    if raw_images not in (None, []) and not isinstance(raw_images, list):
+        dropped.append("the reference images were not sent as a list")
+    for index, raw in enumerate(entries, start=1):
         cleaned = clean_image(raw, index)
         if cleaned is None:
             dropped.append(f"image {index} had no usable measurements")

@@ -360,6 +360,53 @@ _, imp3 = call("POST", "/api/improve", {"model": "hailuo-02-standard", "prompt":
 ok("and a video endpoint's do not, because the rules are its own",
    "lint_note" not in (imp3.get("data") or {}), list(imp3.get("data") or {}))
 
+print("== no endpoint dies on a field of the wrong type ==")
+# The exhaustive version of the pytest sweep: every field each POST endpoint reads,
+# crossed with a value of the wrong type. A raise inside a handler closes the
+# socket, so the client sees a 502 with no message — the one failure a public
+# endpoint must never produce.
+WRONG = [None, 7, [], {}, "no", True, -1, {"k": 7}]
+FIELDS = {
+    "/api/preflight": ["prompt", "model", "options", "image_count", "system_message", "image"],
+    "/api/improve": ["prompt", "model", "selections", "palette", "template", "clean", "image"],
+    "/api/compile": ["prompt", "style", "dry_run", "model"],
+    "/api/storyboard": ["concept", "answers", "beats", "model", "design", "references",
+                        "total_seconds", "scene_seconds", "aspect", "action"],
+    "/api/video": ["concept", "storyboard", "model", "design", "answers", "references",
+                   "total_seconds", "scene_seconds", "action", "confirm"],
+    "/api/reference": ["images", "model"],
+}
+BASE_BODY = {"prompt": "a cat on a mat", "concept": "a cat on a mat", "action": "plan",
+             "images": [{"width": 1280, "height": 720, "type": "image/png", "bytes": 10}]}
+swept, dead = 0, []
+for route, fields in FIELDS.items():
+    for field in fields:
+        for value in WRONG:
+            body = dict(BASE_BODY)
+            body[field] = value
+            code, r = call("POST", route, body)
+            swept += 1
+            if code not in (200, 400, 501):
+                dead.append(f"{route} {field}={value!r} -> {code} {str(r)[:60]}")
+ok(f"every wrong-typed field is refused, not fatal ({swept} combinations)",
+   not dead, dead[:4])
+
+# The shapes that used to close the socket, each with the reason it was refused.
+for route, action, field, value in (
+        ("/api/video", "plan", "design", "no"),
+        ("/api/video", "plan", "design", {"selections": "no"}),
+        ("/api/video", "plan", "design", {"template": 7}),
+        ("/api/video", "plan", "design", {"palette": 7}),
+        ("/api/video", "plan", "references", 7),
+        ("/api/video", "plan", "answers", "no"),
+        ("/api/storyboard", "scenes", "design", "no"),
+        ("/api/storyboard", "scenes", "references", 7),
+        ("/api/storyboard", "scenes", "beats", "no")):
+    code, r = call("POST", route, {"action": action, "concept": "a cat", "model": "sora-2",
+                                   field: value})
+    ok(f"{route} refuses {field}={str(value)[:26]}",
+       code == 400 and "unreachable" not in str(r), (code, str(r)[:90]))
+
 print()
 print(f"{checks - len(fails)}/{checks} checks passed")
 if fails:

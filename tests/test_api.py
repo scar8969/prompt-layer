@@ -614,3 +614,60 @@ def test_improve_says_where_the_lint_rules_come_from_on_an_image_endpoint():
     _, body = _post(base, {"model": "hailuo-02-standard",
                            "prompt": "a beautiful 8k photo of a sneaker"})
     assert "lint_note" not in body["data"]
+
+
+# ---------------------------------------------- a wrong type is answered, not fatal
+# An unhandled raise inside a handler closes the connection, so the client sees a
+# 502 with no explanation and no message. Every field each POST endpoint reads is
+# therefore walked with a value of the wrong type: the answer must be a refusal or
+# a success, never a dead socket. The exhaustive version of this sweep lives in
+# scripts/sanity.py, which is run deliberately rather than on every test run.
+WRONG_TYPES = [None, 7, [], {}, "no", True, {"k": 7}]
+ROUTE_FIELDS = {
+    "preflight": ["prompt", "model", "options", "image_count", "image"],
+    "improve": ["prompt", "model", "selections", "palette", "template", "clean", "image"],
+    "compile": ["prompt", "style", "dry_run", "model"],
+    "storyboard": ["concept", "answers", "beats", "model", "design", "references",
+                   "total_seconds", "scene_seconds", "aspect", "action"],
+    "video": ["concept", "storyboard", "model", "design", "answers", "references",
+              "total_seconds", "scene_seconds", "action", "confirm"],
+    "reference": ["images", "model"],
+}
+
+
+def test_no_post_endpoint_dies_on_a_field_of_the_wrong_type():
+    base = {"prompt": "a cat on a mat", "concept": "a cat on a mat", "action": "plan",
+            "images": [{"width": 1280, "height": 720, "type": "image/png", "bytes": 10}]}
+    tried = 0
+    for name, fields in ROUTE_FIELDS.items():
+        server = _server_for(name)
+        for field in fields:
+            for value in WRONG_TYPES:
+                body = dict(base)
+                body[field] = value
+                status, answer = _post_raw(server, body)
+                tried += 1
+                assert status in (200, 400, 501), (name, field, value, status, answer)
+                assert answer.get("success") is not None, (name, field, value, answer)
+    assert tried == sum(len(f) for f in ROUTE_FIELDS.values()) * len(WRONG_TYPES)
+
+
+def test_the_shapes_that_used_to_close_the_socket_are_refused_with_a_reason():
+    """Each of these raised inside the handler before the audit."""
+    video = _server_for("video")
+    storyboard = _server_for("storyboard")
+    for server, route, action in ((video, "/api/video", "plan"),
+                                  (storyboard, "/api/storyboard", "scenes")):
+        for field, value in (("design", "no"), ("answers", "no"), ("references", 7),
+                             ("total_seconds", "abc")):
+            status, body = _post_raw(server, {"action": action, "concept": "a cat",
+                                              "model": "sora-2", field: value})
+            assert status == 400, (route, field, value, status, body)
+            assert field in body["message"], (route, field, body)
+    # Inside an object, not only at the top level.
+    for field, value in (("selections", "no"), ("template", 7), ("palette", 7),
+                         ("negative", 7), ("selections", {"camera_move": 7})):
+        status, body = _post_raw(video, {"action": "plan", "concept": "a cat",
+                                         "model": "sora-2", "design": {field: value}})
+        assert status in (200, 400), (field, status, body)
+        assert "unreachable" not in json.dumps(body), (field, body)

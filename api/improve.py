@@ -27,7 +27,13 @@ from http.server import BaseHTTPRequestHandler
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from promptlayer import build_improve, load_design, model_detail  # noqa: E402
-from promptlayer.http import read_json, send_error_json, send_json, validate_prompt  # noqa: E402
+from promptlayer.http import (  # noqa: E402
+    read_json,
+    send_error_json,
+    send_json,
+    string_field,
+    validate_prompt,
+)
 
 MAX_IMAGE_DIM = 8192
 
@@ -70,6 +76,8 @@ class handler(BaseHTTPRequestHandler):
         if template not in load_design()["templates"]:
             return send_error_json(self, 400, f"Unknown template '{template}'",
                                    available=list(load_design()["templates"]))
+        if not string_field(self, body.get("palette"), "palette"):
+            return
         clean = bool(body.get("clean"))
 
         detail = model_detail(model)

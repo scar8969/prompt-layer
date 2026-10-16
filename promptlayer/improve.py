@@ -256,13 +256,21 @@ def apply_design(
     reported back in `unknown` rather than silently written into your prompt.
     """
     design = load_design()
-    template_conf = design["templates"].get(template)
-    if template_conf is None:
-        raise KeyError(template)
-    selections = dict(selections or {})
+    # An unknown template is not a reason to fail a request — it is one more value
+    # that cannot be placed, and this module's rule is to report those rather than
+    # raise. Falling back keeps the merge working, and the fallback is named in
+    # `unknown` so the caller can see that what it asked for was not used.
+    asked = template
+    fallback = "inline" if "inline" in design["templates"] else next(iter(design["templates"]))
+    if isinstance(asked, str) and asked in design["templates"]:
+        template, template_unknown = asked, None
+    else:
+        template, template_unknown = fallback, (asked if asked not in (None, "") else None)
+    template_conf = design["templates"][template]
+    selections = selections if isinstance(selections, dict) else {}
     known = vocab()
     added: List[Dict[str, str]] = []
-    unknown: List[str] = []
+    unknown: List[str] = [f"template={template_unknown}"] if template_unknown is not None else []
 
     def take(key: str) -> List[str]:
         value = selections.get(key)
@@ -288,7 +296,7 @@ def apply_design(
         if items:
             parts[key] = ", ".join(items)
     negatives = take("negative")
-    palette_value = (palette or "").strip()
+    palette_value = palette.strip() if isinstance(palette, str) else ""
     # Dialogue is not a vocabulary list: it is the user's own line. It is written
     # in the documented block shape and reported like every other merge.
     dialogue = selections.get("dialogue")

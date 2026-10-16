@@ -39,7 +39,15 @@ from promptlayer import (  # noqa: E402
     reference_roles,
     storyboard_version,
 )
-from promptlayer.http import read_json, send_error_json, send_json  # noqa: E402
+from promptlayer.http import (  # noqa: E402
+    design_field,
+    list_field,
+    object_field,
+    read_json,
+    seconds_fields,
+    send_error_json,
+    send_json,
+)
 
 MAX_CONCEPT = 8000
 MAX_BEATS = 24
@@ -66,24 +74,6 @@ def _beats(value):
         elif isinstance(entry, dict) and str(entry.get("text") or "").strip():
             out.append({"text": str(entry["text"]).strip(), "cue": bool(entry.get("cue"))})
     return out or None
-
-
-def _seconds(handler, value, field):
-    """A clip length the caller sent, or None. A non-number is refused, not cast."""
-    if value is None or value == "":
-        return None
-    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
-        send_error_json(handler, 400, f"Field '{field}' must be a number of seconds")
-        return None
-    try:
-        number = float(value)
-    except (TypeError, ValueError):
-        send_error_json(handler, 400, f"Field '{field}' must be a number of seconds")
-        return None
-    if not 0 < number <= 600:
-        send_error_json(handler, 400, f"Field '{field}' must be between 0 and 600 seconds")
-        return None
-    return number
 
 
 class handler(BaseHTTPRequestHandler):
@@ -134,9 +124,11 @@ class handler(BaseHTTPRequestHandler):
                 "data": plan(concept, answers=answers, model_detail=detail),
             })
 
+        if not design_field(self, body.get("design")):
+            return
+        if not object_field(self, body.get("answers"), "answers"):
+            return
         design = body.get("design")
-        if design is not None and not isinstance(design, dict):
-            return send_error_json(self, 400, "Field 'design' must be an object")
         # `/api/improve` takes `palette` at the top level; accept it here too
         # rather than silently ignoring a field the caller did send.
         if body.get("palette") and not (design or {}).get("palette"):
@@ -144,14 +136,16 @@ class handler(BaseHTTPRequestHandler):
         if body.get("template") and not (design or {}).get("template"):
             design = {**(design or {}), "template": body["template"]}
         answers = body.get("answers")
-        if answers is not None and not isinstance(answers, dict):
-            return send_error_json(self, 400, "Field 'answers' must be an object")
-        references = build_reference_set(body.get("references"), detail) if body.get("references") else None
-        total_seconds = _seconds(self, body.get("total_seconds"), "total_seconds")
-        scene_seconds = _seconds(self, body.get("scene_seconds"), "scene_seconds")
-        if (body.get("total_seconds") not in (None, "") and total_seconds is None) or \
-           (body.get("scene_seconds") not in (None, "") and scene_seconds is None):
+        if not list_field(self, body.get("references"), "references"):
             return
+        if not list_field(self, body.get("beats"), "beats"):
+            return
+        references = build_reference_set(body.get("references"), detail) if body.get("references") else None
+        seconds = seconds_fields(self, body, "total_seconds", "scene_seconds")
+        if seconds is None:
+            return
+        total_seconds = seconds.get("total_seconds")
+        scene_seconds = seconds.get("scene_seconds")
         data = build_scenes(
             concept,
             model=model,

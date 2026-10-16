@@ -129,6 +129,29 @@ def _contains(text: str, item: str) -> bool:
     return re.search(r"(?<![\w-])" + re.escape(item) + r"(?![\w-])", text, re.I) is not None
 
 
+# --------------------------------------------------------------- caller shapes
+# These four exist because a malformed body must not raise: an unhandled exception
+# inside a handler closes the connection, which reaches the client as a 502 with
+# no explanation, and `dict("no")` / `"no".items()` do exactly that.
+def _as_dict(value: Any) -> Dict[str, Any]:
+    """A mapping the caller meant to send, or nothing at all."""
+    return dict(value) if isinstance(value, dict) else {}
+
+
+def _as_negative_list(value: Any) -> List[str]:
+    """The negatives to merge: a list of phrases, or one phrase on its own."""
+    if isinstance(value, str):
+        return [value.strip()] if value.strip() else []
+    if isinstance(value, list):
+        return [n.strip() for n in value if isinstance(n, str) and n.strip()]
+    return []
+
+
+def _answers_from(value: Any) -> Dict[str, Any]:
+    """The chat turn's answers, without the ones that carry no answer."""
+    return {k: v for k, v in _as_dict(value).items() if v not in (None, "", [])}
+
+
 def read_facets(text: str) -> Dict[str, Any]:
     """Read the facets out of the concept. Only what is there, nothing filled in.
 
@@ -363,7 +386,7 @@ def plan(concept: str,
          answers: Optional[Dict[str, Any]] = None,
          model_detail: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """One chat turn: read the concept, report the gaps, ask the next questions."""
-    answers = {k: v for k, v in (answers or {}).items() if v not in (None, "", [])}
+    answers = _answers_from(answers)
     reading = read_facets(concept)
     found = dict(reading["found"])
     for key, value in answers.items():
@@ -546,13 +569,13 @@ def build_scenes(concept: str,
     else is reported rather than dropped — a chat answer that never reaches the
     prompt is worse than a note saying why it could not.
     """
-    design = dict(design or {})
-    selections = dict(design.get("selections") or {})
+    design = _as_dict(design)
+    selections = _as_dict(design.get("selections"))
     palette = design.get("palette")
-    negatives = list(design.get("negative") or [])
+    negatives = _as_negative_list(design.get("negative"))
     template = design.get("template") or template
 
-    answers = {k: v for k, v in (answers or {}).items() if v not in (None, "", [])}
+    answers = _answers_from(answers)
     known = vocab()
     placed: Dict[str, Any] = {}
     unplaced: List[str] = []

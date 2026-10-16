@@ -153,9 +153,20 @@ def test_apply_design_refuses_values_it_cannot_source():
     assert result["added"] == []
 
 
-def test_apply_design_rejects_an_unknown_template():
-    with pytest.raises(KeyError):
-        apply_design("A robot sits.", {}, template="haiku")
+def test_an_unknown_template_falls_back_and_says_so():
+    """The merge reports a value it cannot place rather than raising: a raise here
+    reaches the client as a 502 with no explanation, and /api/improve already
+    answers 400 for a template it does not document before calling this."""
+    result = apply_design("A robot sits.", {}, template="haiku")
+    assert result["template"] == "inline"
+    assert result["unknown"] == ["template=haiku"]
+    assert "A robot sits." in result["prompt"]
+    # A template that is documented is still used, and is not reported.
+    labelled = apply_design("A robot sits.", {}, template="labelled")
+    assert labelled["template"] == "labelled" and labelled["unknown"] == []
+    # A non-string is the same case as an unknown one, not a crash.
+    assert apply_design("A robot sits.", {}, template=7)["template"] == "inline"
+    assert apply_design("A robot sits.", {}, template=None)["unknown"] == []
 
 
 def test_dialogue_is_written_as_a_block_not_as_a_design_element():

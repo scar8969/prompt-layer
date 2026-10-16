@@ -317,7 +317,7 @@ curl -s -X POST localhost:8090/api/video -H 'Content-Type: application/json' \
 
 ```bash
 python dev.py          # http://127.0.0.1:8090   (emulates the Vercel layout)
-python -m pytest -q    # 231 tests
+python -m pytest -q    # 233 tests
 ```
 
 No dependencies — the service, the dataset and the functions are all standard
@@ -383,7 +383,7 @@ promptlayer/
   http.py             shared request/response helpers
 scripts/              the two parsers that generate the preset datasets
 dev.py                local emulation of the Vercel layout
-tests/                231 tests: datasets, assembly, improvement, the planner, the
+tests/                233 tests: datasets, assembly, improvement, the planner, the
                       deployment shape, the deployed entry points
 ```
 
