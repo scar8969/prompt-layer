@@ -14,8 +14,8 @@ Choosing the engine is one value -- `STUDIO_DATABASE_URL` -- and
 `Database.from_config()` is the only place that decides. The same seven
 migrations apply to both; there is no second schema.
 
-**Verified, not assumed:** the full suite passes on SQLite (639 passed, 14
-skipped) *and* against a real PostgreSQL 17 server (653 passed, 0 skipped, 0
+**Verified, not assumed:** the full suite passes on SQLite (639 passed, 18
+skipped) *and* against a real PostgreSQL 17 server (657 passed, 0 skipped, 0
 failed). Both counts are after the change; the suite was 619 before it.
 
 Added:
@@ -45,6 +45,26 @@ Added:
   exactly as before.
 
 Fixed (found by running the suite against Postgres, not by reading it):
+
+- **A job could be handed to two workers at once -- double provider submits,
+  double billing.** `claim_next` is `UPDATE ... WHERE id = (SELECT ... LIMIT 1)`.
+  On SQLite the surrounding `BEGIN IMMEDIATE` serialises writers, which is what
+  the docstring described. On Postgres it does not: the second worker's UPDATE
+  blocks on the row lock, and on release Postgres re-checks only the *outer*
+  WHERE -- it does not re-run the subquery. With a bare `WHERE id = (...)` there
+  was nothing for that re-check to refuse. Measured: **20 jobs, 6 workers, 48
+  claims, 28 duplicates.** Fixed with `FOR UPDATE SKIP LOCKED` inside the
+  subquery (Postgres only) and the status/lease conditions repeated in the outer
+  WHERE. `tests/test_claiming_postgres.py` pins it over three contended rounds;
+  the broken statement fails that test 4 runs out of 4.
+- **`claim_next` read its `RETURNING` result as a bare psycopg tuple** --
+  `TypeError: tuple indices must be integers or slices, not str`. Any
+  `INSERT/UPDATE ... RETURNING` read through `cursor.fetchall()` hits this.
+  Added `Database.rows(cursor)` / `Transaction.rows(cursor)`, which normalise a
+  cursor's result to the same row shape `query()` returns.
+- **Worker threads held a pool connection forever.** The HTTP side releases per
+  request; a long-lived worker thread did not, so N workers consumed N pool
+  slots permanently. `GenerationRunner` now releases per loop iteration.
 
 - **A connection leak that would have taken the site down under load.** The
   server is one thread per request, so a thread-local Postgres handle opened a

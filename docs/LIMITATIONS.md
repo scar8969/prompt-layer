@@ -9,7 +9,7 @@ nothing real is left out.
 ### Postgres is verified against a local PostgreSQL 17, not against Supabase
 
 Phase 1 was developed and tested against PostgreSQL 17.6 running locally on
-Windows. The full suite passes there (653 tests) and on SQLite (639, with the 14
+Windows. The full suite passes there (657 tests) and on SQLite (639, with the 14
 Postgres-only tests skipped). What that does **not** prove:
 
 - **Nothing has run against Supabase itself.** The pooler behaves differently

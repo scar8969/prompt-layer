@@ -334,6 +334,10 @@ class Transaction:
     def query_one(self, sql: str, params: Sequence[Any] = ()) -> Optional[Any]:
         return self._db.query_one(sql, params)
 
+    def rows(self, cursor: Any) -> List[Any]:
+        """Portable rows from a cursor this transaction executed."""
+        return self._db.rows(cursor)
+
     def scalar(self, sql: str, params: Sequence[Any] = (), default: Any = None) -> Any:
         return self._db.scalar(sql, params, default)
 
@@ -591,6 +595,38 @@ class Database:
         return self.connection().executemany(
             self._sql(sql, ("x",)), tuple(tuple(r) for r in rows)
         )
+
+    def rows(self, cursor: Any) -> List[Any]:
+        """Turn whatever a cursor returns into portable rows.
+
+        ``execute()`` returns the driver's own cursor, because a caller that
+        wants ``rowcount`` or ``lastrowid`` needs it. On Postgres that cursor
+        yields bare tuples, which answer ``row[0]`` but not ``row["id"]``. This
+        converts a cursor's result -- typically from an ``INSERT ... RETURNING``
+        -- into the same row shape :meth:`query` produces, so one statement
+        written for both engines can read its own result by column name.
+
+        Passing a list of rows is also accepted, so a caller that already
+        fetched (through :meth:`query`) can go through the same path unchanged.
+        """
+        if not self.is_postgres:
+            if isinstance(cursor, (list, tuple)):
+                return list(cursor)
+            return list(cursor.fetchall())
+        if isinstance(cursor, (list, tuple)):
+            fetched: Any = list(cursor)
+            default_columns: Tuple[str, ...] = ()
+        else:
+            fetched = cursor.fetchall()
+            default_columns = tuple(description[0] for description in cursor.description or ())
+        if not fetched:
+            return []
+        if isinstance(fetched[0], Row):
+            return list(fetched)
+        return [Row(tuple(values.keys()), tuple(values.values()))
+                if isinstance(values, dict)
+                else Row(default_columns, tuple(values))
+                for values in fetched]
 
     def columns_of(self, table: str) -> frozenset:
         """The actual column set of a table, cached after the first look."""

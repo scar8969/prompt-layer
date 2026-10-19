@@ -3043,6 +3043,22 @@ class JobRepository(_Repository):
             )
         stamp = _iso(now) or now_iso()
         expires = _shift_iso(stamp, seconds)
+        # On Postgres the subquery takes the row lock with SKIP LOCKED, so a
+        # second worker skips a row another transaction already holds instead of
+        # blocking on it. On SQLite the surrounding BEGIN IMMEDIATE already
+        # serialises the writers, and SKIP LOCKED is not valid syntax there.
+        #
+        # The outer WHERE repeats the status and lease conditions. That is not
+        # redundant: on Postgres a blocked UPDATE re-evaluates its *outer* WHERE
+        # after the lock is released, but does not re-run the subquery. Without
+        # the repeat, two workers both picked the same id, one committed, and the
+        # second updated a row that was no longer claimable -- measured at 26
+        # claims for 20 jobs before this was added.
+        lock_clause = (
+            " FOR UPDATE SKIP LOCKED"
+            if getattr(self._db, "is_postgres", False)
+            else ""
+        )
         with self._db.write_tx() as tx:
             cursor = tx.execute(
                 # A queued job is being sent to the provider. A job already in
@@ -3065,7 +3081,18 @@ class JobRepository(_Repository):
                 " status_message = CASE WHEN status IN ('queued', 'validating')"
                 "   THEN 'Submitting to the provider.' ELSE status_message END,"
                 " updated_at = ?"
-                " WHERE id = ("
+                " WHERE (lease_expires_at IS NULL OR lease_expires_at < ?)"
+                "   AND ("
+                "     ("
+                "       status IN ('queued', 'validating')"
+                "       AND (next_attempt_at IS NULL OR next_attempt_at <= ?)"
+                "     )"
+                "     OR ("
+                "       status IN ('processing', 'downloading')"
+                "       AND (next_attempt_at IS NULL OR next_attempt_at <= ?)"
+                "     )"
+                "   )"
+                "   AND id = ("
                 "   SELECT id FROM generation_jobs"
                 "   WHERE (lease_expires_at IS NULL OR lease_expires_at < ?)"
                 "     AND ("
@@ -3080,10 +3107,13 @@ class JobRepository(_Repository):
                 "     )"
                 "   ORDER BY created_at ASC"
                 "   LIMIT 1"
+                + lock_clause +
                 " ) RETURNING id, workspace_id, attempt, status",
-                (owner, expires, stamp, stamp, stamp, stamp, stamp),
+                (owner, expires, stamp, stamp,
+                 stamp, stamp, stamp,      # outer re-check
+                 stamp, stamp, stamp),      # subquery selection
             )
-            claimed = cursor.fetchall()
+            claimed = tx.rows(cursor)
             if not claimed:
                 return None
             job_id = claimed[0]["id"]

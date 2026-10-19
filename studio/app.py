@@ -165,6 +165,7 @@ def build_app(config: Optional[Configuration] = None, *, start_worker: bool = Fa
         connections=connections,
         assets=assets,
         config=settings,
+        database=db,
     )
 
     router = Router()

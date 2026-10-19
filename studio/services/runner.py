@@ -14,6 +14,7 @@ matter more than throughput:
 
 from __future__ import annotations
 
+import contextlib
 import threading
 import time
 import traceback
@@ -81,8 +82,13 @@ class GenerationRunner:
         assets: Any,
         config: Any,
         worker_id: str = "",
+        database: Any = None,
     ) -> None:
         self.repos = repositories
+        #: Held only so a worker thread can hand its Postgres connection back to
+        #: the pool after each pass. Optional, so a runner built without one (in
+        #: tests) behaves exactly as before.
+        self._database = database
         self.connections = connections
         self.assets = assets
         self.config = config
@@ -162,6 +168,23 @@ class GenerationRunner:
             # polled but is still running comes back once its lease lapses, and a
             # short pause here keeps that from being a spin.
             self._stop.wait(interval)
+            self._release_connection()
+
+    def _release_connection(self) -> None:
+        """Hand this worker thread's Postgres connection back to the pool.
+
+        A worker thread lives for the whole process, so a checked-out connection
+        would be held forever -- and with several workers that is the entire pool.
+        The HTTP side releases per request (``HttpApp.handle``); the worker side
+        releases per iteration, which is the same idea at a different cadence.
+
+        A no-op on SQLite, where the connection is a cheap thread-local handle.
+        """
+        database = getattr(self, "_database", None)
+        if database is None:
+            return
+        with contextlib.suppress(Exception):
+            database.release()
 
     # -- one job ----------------------------------------------------------------
 
