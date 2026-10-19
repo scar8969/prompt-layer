@@ -1,3 +1,29 @@
+# Prompt Layer & Studio
+
+This repository holds two products:
+
+- **Prompt Layer** (`api/`, `index.html`, `promptlayer/`) — the preflight /
+  improve / video / compile tools. Preflight for what a model provider
+  adds to your prompt before you pay for it.
+- **Studio** (`studio/`, `web/`) — a sibling BYOK image and video
+  creative platform. Register, queue real generations, store the
+  artifact, build a library of prompts and characters.
+
+They are siblings, not layers of each other. Per `docs/PLAN.md`:
+
+> Studio is the AI image and video creative platform in this repository.
+> It is a sibling of Prompt Layer, not a replacement: Prompt Layer stays
+> exactly as it is.
+
+Read the section you need:
+
+- [Prompt Layer](#prompt-layer) — the preflight tool, the dataset, the
+  Vercel deployment.
+- [Studio](#studio) — the BYOK platform, the SQLite schema, the
+  container deployment.
+
+---
+
 # Prompt Layer
 
 **See what a model provider adds to your prompt before you pay for it — then choose.**
@@ -511,5 +537,105 @@ this tool is that every claim can be checked.
   variables *and* the request confirms.
 
 Built as a [tokN](https://tokn.co.in) tool.
+
+---
+
+# Studio
+
+**A prompt-centric, BYOK image and video studio. You bring the keys; we hold the jobs.**
+
+`docs/SETUP.md` is the canonical setup guide. This section is the same
+information, condensed, and `docs/PLAN.md` explains why each piece is
+shaped the way it is.
+
+## What is Studio
+
+Studio is a sibling of Prompt Layer, not a replacement. Prompt Layer
+stays exactly as it is. Studio is what the four tools cannot do:
+keep your own credential, queue a real generation against a real
+provider, store the artifact, and build up a library of prompts,
+presets and characters you can re-use. The dataset-driven UI in
+Prompt Layer above still answers "what does this endpoint add to my
+prompt?"; Studio is the place that prompt runs against.
+
+## Stack
+
+| Layer | Choice | Why |
+|---|---|---|
+| Python | 3.14 | `pyproject.toml` pins `~=3.14.0` |
+| Database | SQLite + WAL, 7 SQL migrations, 26 tables | durable relational storage with no service to install; `docs/SCHEMA.md` records the choice |
+| Object storage | local disk by default; `S3ObjectStore` written, never run against a live bucket | a smaller surface, twice, beats a large surface once |
+| HTTP | threaded `BaseHTTPRequestHandler`, one function `python -m studio.app` | matches the dependency-light pattern of Prompt Layer |
+| Crypto | AES-256-GCM envelope, HKDF, scrypt passwords | from `cryptography`, the only third-party package |
+| Worker | in-process thread pool, lease-based | restarts are safe: the queue is a table |
+| Client | React 19 + TypeScript 7 + Vite 8 → `web/dist/` | built by `npm run build`; served from the same origin as the API |
+
+## 74 routes, 8 groups
+
+`system`, `auth`, `connections`, `models`, `generations`, `jobs`, `assets`, `library`. Every route is in `studio/routes/` and registered through `routes/__init__.py`.
+
+## 4 adapters
+
+| Slug | What it speaks | Verified against live? |
+|---|---|---|
+| `fal_queue` | fal.ai async queue | **No** — described interface only |
+| `openai_images` | OpenAI-compatible generate/edit/vary | **No** — public shape only |
+| `declarative_http` | any image/video API described by a mapping; the mapping is data, never code | safe by construction (no mapping = no execution) |
+| `mock` | local placeholder encoder — PNG/MP4 on this machine | yes (local only) |
+
+Two adapter contracts (`fal_queue`, `openai_images`) have never been run against a live provider. The first real generation against a real key is the first verification — surface drift as `provider_error` with the actual payload attached, not a fabricated result. This is documented at length in `docs/LIMITATIONS.md`.
+
+## The two layers of security that matter most
+
+- **`studio/net.py`** (1044 lines) — the SSRF policy. Blocks by hostname (literal), by suffix (`.local`, `.internal`, …), by network (CIDR-precise, both v4 and v6, with named metadata addresses for AWS / Azure / GCP / Oracle / Alibaba). Handles IPv4-mapped IPv6, integer/hex/octal loopback spellings, embedded credentials, URL length cap, port range, redirect validation. 59 tests in `tests/test_security.py` cover every one.
+
+- **`studio/crypto.py`** — AES-256-GCM envelope encryption. AAD is bound to the connection id + workspace id + field name; a ciphertext lifted from one row cannot be pasted into another. Fixed context string `studio-platform/credential-envelope/v1`, so a future HKDF change invalidates everything cleanly. Per-hash scrypt parameters. The `EncryptionUnavailable` exception is raised rather than quietly degraded.
+
+## Run it
+
+```
+pip install -r requirements.txt
+pip install -r requirements-dev.txt
+pip install cryptography
+python -m studio.db migrate                # one-time, creates ./var/studio/studio.db
+python scripts/gen_studio_env.py > .studio_env.sh
+python scripts/run_studio.py --port 8091
+```
+
+Open `http://127.0.0.1:8091/api/system/status` for the live state, register an account, open **New connection**, pick the `mock` adapter, register a model, go to **Image Studio** and generate. The full BYOK flow (paste your real fal key, pick the provider, test, register a model, generate) is the same UI against a real connection.
+
+For verification end-to-end the helper scripts the maintainer ships are:
+
+```
+python scripts/smoke_studio.py            # register → login → connection → test → model → generation → asset stored
+python scripts/repro_assets_list.py      # live reproduction of the assets.list regression
+```
+
+## Deploy it
+
+`docs/DEPLOYMENT.md` covers both shapes. The current concrete deployment is a single container:
+
+```
+docker build -t prompt-layer-studio .
+docker compose up
+```
+
+`Dockerfile` is written but no image has been built from it yet (this is the maintainer's honest note in `docs/DEPLOYMENT.md`). The compose file mounts a named volume at `/data` for SQLite and the local object store. `docs/DEPLOYMENT.md` lists every required env var (`STUDIO_ENCRYPTION_KEY`, `STUDIO_AUTH_SECRET`, `STUDIO_PUBLIC_APP_URL`, `STUDIO_REQUIRE_HTTPS`, `STUDIO_ALLOW_PRIVATE_HOSTS`, `STUDIO_ALLOW_INSECURE_ENDPOINTS`, `STUDIO_ENABLE_MOCK_PROVIDER`).
+
+Studio is **not** on Vercel. The maintainer's `docs/PLAN.md` documents the ~4-week migration that would be required to put a long-running process with a database and worker threads on a serverless platform, and explicitly rejects it on the grounds that the platform's design assumes durable state. Use the `Dockerfile` (or any container host), not Vercel functions.
+
+## Honest limits
+
+In full, from `docs/LIMITATIONS.md`:
+
+| Limit | Consequence |
+|---|---|
+| `fal_queue` was tested against the public OpenAPI and 401 responses only | submit/poll/download are exercised against the *described* interface, not the live behaviour |
+| `openai_images` is implemented from the public API shape | request and response mapping is unverified against the live service |
+| `S3ObjectStore` has never been run against a live bucket | the local backend is the only one tested; do not switch to `s3` until somebody has watched those four calls succeed |
+| the local backend refuses bodies larger than 512 MiB and has no retries | documented; a half-written object is worse than a clear refusal |
+| SQLite write contention under concurrent jobs | WAL + busy timeout + short write transactions; `docs/PLAN.md` calls this the scaling limit |
+
+The full test suite (**619 tests in ~60 s**) does not prove wire-format correctness on a real provider. It proves the contract holds under the mock adapter and the documented interfaces. The first run against a real key is also the first verification.
 
 MIT — see [LICENSE](LICENSE).
