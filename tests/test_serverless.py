@@ -129,3 +129,79 @@ class TestClientAddress:
         # A random value here would let one caller past every rate limit.
         assert client_ip_from({}) == "0.0.0.0"
         assert client_ip_from({}) == client_ip_from({})
+
+
+class TestTheFunctionModule:
+    """The Vercel entrypoint itself, not just the package it delegates to.
+
+    A bug shipped through every test in this file: `api/studio.py` imported
+    `application_path` *inside* the request handler, which makes the name
+    function-local, and the handler used it before the import ran. Every unit test
+    passed because they call `studio.serverless.handle` directly and never touch
+    the function module. These tests import it the way Vercel does -- by file --
+    and call its handler against a real application.
+    """
+
+    @staticmethod
+    def _load():
+        import importlib.util
+
+        path = os.path.join(REPO, "api", "studio.py")
+        spec = importlib.util.spec_from_file_location("vf_studio_under_test", path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def test_the_module_exposes_a_handler(self):
+        from http.server import BaseHTTPRequestHandler
+
+        module = self._load()
+        assert issubclass(module.handler, BaseHTTPRequestHandler)
+
+    def test_application_path_is_module_scope(self):
+        """The name the handler calls before its try block must exist at import.
+
+        If it is imported inside the function instead, `module.application_path`
+        is absent and every request raises UnboundLocalError at runtime -- which
+        is a 500 with a generic platform message, not a JSON error.
+        """
+        module = self._load()
+        assert hasattr(module, "application_path"), (
+            "application_path is not at module scope; the handler will raise "
+            "UnboundLocalError before it can build a response"
+        )
+        assert hasattr(module, "handle")
+
+    def test_a_real_request_is_served_by_the_function_module(self, studio_app):
+        """Drive the actual handler with a socket pair, no server.
+
+        `BaseHTTPRequestHandler` reads from `rfile` and writes to `wfile`, so a
+        pair of in-memory buffers is enough -- and it exercises the code path
+        Vercel's runtime uses, including the prefix stripping.
+        """
+        import io
+
+        module = self._load()
+        raw = (
+            b"GET /api/studio/api/health HTTP/1.1\r\n"
+            b"Host: localhost\r\n"
+            b"Content-Length: 0\r\n"
+            b"\r\n"
+        )
+        instance = module.handler.__new__(module.handler)
+        instance.rfile = io.BytesIO(raw)
+        instance.wfile = io.BytesIO()
+        # The pieces BaseHTTPRequestHandler normally sets up per connection.
+        instance.headers = {}
+        instance.request_version = "HTTP/1.1"
+        instance.command = "GET"
+        instance.path = "/api/studio/api/health"
+        instance.requestline = "GET /api/studio/api/health HTTP/1.1"
+        instance.client_address = ("127.0.0.1", 0)
+        instance.server = type("S", (), {"server_name": "localhost",
+                                         "server_port": 80})()
+        instance.handle_one_request()
+
+        written = instance.wfile.getvalue()
+        assert b"HTTP/1.1" in written, written[:200]
+        assert b"200" in written.split(b"\r\n", 1)[0], written[:200]

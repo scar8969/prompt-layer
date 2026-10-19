@@ -43,9 +43,23 @@ def register_routes(router: Any, app: Any) -> None:
         )
 
     def show(request: RequestContext) -> Response:
-        """One job with its events and outputs."""
+        """One job with its events and outputs.
+
+        If the job is still moving, this request also tries to advance it. On a
+        deployment with no worker threads -- which is every serverless one -- the
+        client's own poll is what makes progress, and the studio already polls
+        this route while a job runs. `advance_inline` claims with SKIP LOCKED, so
+        two polls arriving together cannot both drive the job.
+
+        The read is answered first and the drive happens on a short-lived thread,
+        so latency does not depend on the provider.
+        """
+        from ..services.advance import advance_inline, should_advance
+
         workspace_id = request.session.workspace_id
         job = app.repos.jobs.get(workspace_id, request.params["id"])
+        if should_advance(job):
+            advance_inline(app, workspace_id, request.params["id"], wait=False)
         return Response.json({"job": shape_job(workspace_id, job)})
 
     def events(request: RequestContext) -> Response:

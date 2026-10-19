@@ -34,7 +34,7 @@
   "crons": [
     {
       "path": "/api/studio_cron",
-      "schedule": "* * * * *"
+      "schedule": "0 3 * * *"
     }
   ],
   "headers": [

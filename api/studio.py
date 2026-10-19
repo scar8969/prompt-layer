@@ -33,6 +33,13 @@ if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
 
+# Imported at module scope, not inside the request handler. The handler needs
+# `application_path` before its try block, and an import placed inside a function
+# makes that name function-local for the whole function -- so referring to it
+# earlier raises UnboundLocalError. That is exactly what shipped once.
+from studio.serverless import application_path, handle  # noqa: E402
+
+
 def _headers(headers) -> dict:
     lowered = {}
     for key, value in headers.items():
@@ -61,8 +68,6 @@ class handler(BaseHTTPRequestHandler):
                 app_path = app_path + "?" + query
 
         try:
-            from studio.serverless import application_path, handle
-
             response = handle(
                 method=method,
                 path=app_path,

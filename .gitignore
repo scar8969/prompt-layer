@@ -42,3 +42,4 @@ gitignore_diff.txt
 audit_studio.txt
 audit_tests.txt
 audit_web.txt
+.vercel
