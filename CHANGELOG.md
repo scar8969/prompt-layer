@@ -15,8 +15,8 @@ only as a long-lived process. Nothing about the application changed: the same
 calls, so routing, auth, CSRF, rate limiting, redaction and error envelopes are
 the deployed code, not a second implementation.
 
-Verified: **686 tests pass** against Postgres + a live S3-compatible server;
-**664 pass with 22 skipped** on SQLite with no S3 endpoint.
+Verified: **700 tests pass** against Postgres + a live S3-compatible server;
+**670 pass with 30 skipped** on SQLite with no S3 endpoint.
 
 Added:
 

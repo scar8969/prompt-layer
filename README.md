@@ -614,8 +614,8 @@ python scripts/run_studio.py --port 8091   # migrations apply on boot
 The same seven migrations run on either engine -- there is no second schema to
 keep in step, and `docs/SCHEMA.md` lists the finite set of differences and where
 each one is handled. Verified by running the whole suite against a real
-PostgreSQL 17 and a live S3 server: **686 tests pass** there and **664 pass
-with 22 skipped** on
+PostgreSQL 17 and a live S3 server: **700 tests pass** there and **670 pass
+with 30 skipped** on
 SQLite.
 
 To run the suite against Postgres yourself:
@@ -686,6 +686,6 @@ In full, from `docs/LIMITATIONS.md`:
 | the local backend refuses bodies larger than 512 MiB and has no retries | documented; a half-written object is worse than a clear refusal |
 | SQLite write contention under concurrent jobs | WAL + busy timeout + short write transactions; `docs/PLAN.md` calls this the scaling limit |
 
-The full test suite (**686 tests**, on SQLite or on Postgres) does not prove wire-format correctness on a real provider. It proves the contract holds under the mock adapter and the documented interfaces. The first run against a real key is also the first verification.
+The full test suite (**700 tests**, on SQLite or on Postgres) does not prove wire-format correctness on a real provider. It proves the contract holds under the mock adapter and the documented interfaces. The first run against a real key is also the first verification.
 
 MIT — see [LICENSE](LICENSE).
