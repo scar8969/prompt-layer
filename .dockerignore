@@ -1,0 +1,68 @@
+# Version control and local state
+.git
+.gitignore
+.github
+*.db
+*.db-wal
+*.db-shm
+
+# Python build artefacts
+__pycache__
+**/__pycache__
+*.py[cod]
+.pytest_cache
+.venv
+venv
+env
+
+# Node and the built client. web/dist is deliberately NOT ignored: the container
+# serves the built client from web/dist on the same origin as the API, so the
+# image must contain it. Build it with `npm run build` in web/ before building
+# the image, or run the `web` build stage described in docs/DEPLOYMENT.md.
+# The sources and node_modules stay out of the runtime image.
+node_modules
+**/node_modules
+web/node_modules
+web/src
+web/package.json
+web/package-lock.json
+web/tsconfig.json
+web/vite.config.ts
+
+# Secrets. They belong in the environment, never in the image.
+.env
+.env.*
+!.env.example
+.env.local
+
+# Development-only scripts that talk to provider endpoints. They exist to be
+# run by hand against a local mock, never to ship.
+scripts/_smoke*
+scripts/_catalog_probe.json
+scripts/_fal_schemas.json
+scripts/_declpart*.txt
+scripts/_append*.py
+scripts/_check*.py
+
+# Test fixtures and the test suite
+tests
+**/tests
+**/test_*.py
+**/conftest.py
+.pytest_cache
+
+# Local data directories (the volume replaces them in the container)
+var
+storage
+
+# Deployment and Vercel build output
+.vercel
+.vercelignore
+.python-version
+uv.lock
+
+# Documentation and the vendored schemas: build-time input, not runtime input
+docs
+promptlayer/vendor
+LICENSE
+README.md

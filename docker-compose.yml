@@ -1,0 +1,72 @@
+# One service, one volume, one env file.
+#
+#   cp .env.example .env      # then fill in the two secrets
+#   docker compose up --build
+#   open http://127.0.0.1:8090/api/system/status
+#
+# The container serves the API and the built client (web/dist) on one origin,
+# so http://127.0.0.1:8090/ is the application, not just a health endpoint.
+#
+# The volume is not optional: it holds the SQLite database together with its
+# WAL files, the local object store, and - when the two secrets are unset - the
+# generated key files. Losing it loses every user, every sealed credential and
+# every stored byte. See docs/DEPLOYMENT.md.
+
+services:
+  studio:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: studio-platform:local
+    container_name: studio-platform
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # Container-internal paths. These override anything in .env, so the
+      # volume layout stays correct whatever the host file says.
+      STUDIO_DATA_DIR: /data
+      STUDIO_DATABASE_PATH: /data/studio.db
+      STUDIO_STORAGE_BACKEND: local
+      STUDIO_STORAGE_ROOT: /data/objects
+      # The origin the browser uses. Override this if you publish the app on a
+      # hostname or a different port: the CSRF origin check compares against it,
+      # so a mismatch makes every same-origin POST answer 403.
+      STUDIO_PUBLIC_APP_URL: http://127.0.0.1:8090
+      STUDIO_API_BASE_URL: http://127.0.0.1:8090
+
+      # S3-compatible object storage instead of the local disk.
+      # The backend is selected only when endpoint, bucket, access key AND
+      # secret key are all non-empty (store_from_config in studio/storage.py);
+      # otherwise the local disk is used. It has never been run against a live
+      # bucket - see docs/LIMITATIONS.md - so leave these commented until
+      # somebody has watched a PUT, a HEAD, a listing and a presigned GET
+      # succeed against a real bucket.
+      #
+      # STUDIO_STORAGE_BACKEND: s3
+      # STUDIO_STORAGE_ENDPOINT: https://s3.eu-west-1.amazonaws.com
+      # STUDIO_STORAGE_BUCKET: replace-me-bucket
+      # STUDIO_STORAGE_REGION: eu-west-1
+      # STUDIO_STORAGE_ACCESS_KEY: replace-me-access-key
+      # STUDIO_STORAGE_SECRET_KEY: replace-me-secret-key
+      # STUDIO_STORAGE_FORCE_PATH_STYLE: "true"   # MinIO / R2 style addressing
+      # STUDIO_STORAGE_URL_TTL_SECONDS: "900"
+    ports:
+      - "8090:8090"
+    volumes:
+      - studio_data:/data
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8090/api/system/status', timeout=3).status == 200 else 1)"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    stop_grace_period: 10s
+
+volumes:
+  studio_data:
+    name: studio_data
