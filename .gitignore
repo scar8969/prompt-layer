@@ -17,3 +17,28 @@ env/
 .python-version
 pyproject.toml
 uv.lock
+
+# Studio runtime state. var/studio holds the SQLite database, uploaded objects,
+# and — when STUDIO_ENCRYPTION_KEY is unset — a generated key file. None of that
+# belongs in version control.
+var/
+web/node_modules/
+web/dist/
+
+# Local working copies and session artifacts. The committed `gen_studio_env.py`
+# / `run_studio.py` / `smoke_studio.py` / `repro_assets_list.py` are the real
+# entry points; the files below are what those scripts produce or what
+# interactive sessions leave behind.
+.studio_env.sh
+out.txt
+smoke_out.txt
+start_studio.bat
+git_status.txt
+git_log.txt
+git_branch.txt
+git_remote.txt
+git_porcelain.txt
+gitignore_diff.txt
+audit_studio.txt
+audit_tests.txt
+audit_web.txt
