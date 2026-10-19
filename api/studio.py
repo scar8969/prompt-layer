@@ -78,14 +78,23 @@ class handler(BaseHTTPRequestHandler):
             # A cold start can fail for reasons the application never sees: no
             # database URL, an unreadable schema, a missing driver. Answer with
             # the same envelope shape the application uses so a client's error
-            # handling does not need a second path, and name the failure class.
+            # handling does not need a second path -- and name what is missing,
+            # because "OperationalError" tells whoever deployed this nothing.
+            from studio.startup import missing_for_startup
+
+            missing = missing_for_startup()
             self._write(
                 500,
                 json.dumps(
                     {
                         "error": {
-                            "code": "internal_error",
-                            "message": "The Studio function could not start.",
+                            "code": "configuration_required" if missing else "internal_error",
+                            "message": (
+                                "The Studio function is missing the settings it needs to start."
+                                if missing
+                                else "The Studio function could not start."
+                            ),
+                            "details": {"missing": missing} if missing else None,
                             "provider_message": type(error).__name__,
                             "retryable": False,
                         }

@@ -205,3 +205,55 @@ class TestTheFunctionModule:
         written = instance.wfile.getvalue()
         assert b"HTTP/1.1" in written, written[:200]
         assert b"200" in written.split(b"\r\n", 1)[0], written[:200]
+
+
+class TestStartupDiagnostics:
+    """A failed cold start must say what is missing, not just that it failed."""
+
+    def test_nothing_missing_when_everything_is_set(self):
+        from studio.startup import missing_for_startup
+
+        env = {
+            "STUDIO_DATABASE_URL": "postgresql://x/y",
+            "STUDIO_ENCRYPTION_KEY": "a" * 64,
+            "STUDIO_AUTH_SECRET": "b" * 40,
+            "STUDIO_STORAGE_BACKEND": "local",
+        }
+        assert missing_for_startup(env) == []
+
+    def test_the_database_url_is_named_when_absent(self):
+        from studio.startup import missing_for_startup
+
+        missing = missing_for_startup({"STUDIO_ENCRYPTION_KEY": "a",
+                                       "STUDIO_AUTH_SECRET": "b"})
+        assert "STUDIO_DATABASE_URL" in missing
+
+    def test_asking_for_s3_names_the_storage_settings(self):
+        from studio.startup import missing_for_startup
+
+        env = {
+            "STUDIO_DATABASE_URL": "postgresql://x/y",
+            "STUDIO_ENCRYPTION_KEY": "a",
+            "STUDIO_AUTH_SECRET": "b",
+            "STUDIO_STORAGE_BACKEND": "s3",
+        }
+        missing = missing_for_startup(env)
+        for name in ("STUDIO_STORAGE_ENDPOINT", "STUDIO_STORAGE_BUCKET",
+                     "STUDIO_STORAGE_ACCESS_KEY", "STUDIO_STORAGE_SECRET_KEY"):
+            assert name in missing, name
+
+    def test_a_blank_value_counts_as_missing(self):
+        from studio.startup import missing_for_startup
+
+        env = {"STUDIO_DATABASE_URL": "   ",
+               "STUDIO_ENCRYPTION_KEY": "a", "STUDIO_AUTH_SECRET": "b"}
+        assert "STUDIO_DATABASE_URL" in missing_for_startup(env)
+
+    def test_explain_carries_a_reason(self):
+        from studio.startup import explain
+
+        entries = explain({})
+        assert entries, "nothing reported"
+        for entry in entries:
+            assert entry["name"].startswith("STUDIO_")
+            assert len(entry["why"]) > 20, entry
