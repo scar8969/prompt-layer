@@ -4,6 +4,39 @@ This is the honest list. Every item is something the code does not do, or has
 not been proven to do, with the consequence stated. Nothing here is padded and
 nothing real is left out.
 
+## Database
+
+### Postgres is verified against a local PostgreSQL 17, not against Supabase
+
+Phase 1 was developed and tested against PostgreSQL 17.6 running locally on
+Windows. The full suite passes there (653 tests) and on SQLite (639, with the 14
+Postgres-only tests skipped). What that does **not** prove:
+
+- **Nothing has run against Supabase itself.** The pooler behaves differently
+  from a direct connection in ways that matter: transaction pooling can move a
+  session between server connections, which breaks session-level state. Studio
+  opens no `SET`, no advisory locks and no session-level temp tables, so it
+  should be unaffected, but that is reasoning rather than measurement. A
+  connection string pointed at the direct port (5432) rather than the pooler
+  (6543) sidesteps the question entirely and is the safer first deployment.
+- **Supabase RLS is not used and must not be assumed.** Studio enforces
+  workspace scoping in the repository layer, so the database role needs to read
+  across workspaces. A role restricted by RLS will appear to work and then
+  return the wrong rows.
+- **Connection ceilings were tested at one process.** The pool is capped at 12.
+  Several workers behind Supabase's pooler multiply that; the project's own
+  `max_connections` and pooler mode are the real limit.
+- **No migration has been run against a database that already holds data.**
+  Every test migrates an empty database. There is one schema version so far, so
+  there is nothing to upgrade *from* yet; the first future migration is the
+  first real test of that path.
+
+### SQLite write contention is unchanged
+
+Moving to Postgres removes the single-writer limit, but the SQLite path is still
+what a fresh clone uses, and it still serialises writes. That is documented, not
+fixed.
+
 ## Providers
 
 ### No live provider credential has ever been used

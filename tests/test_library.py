@@ -67,7 +67,7 @@ PASSWORD = "correct horse battery staple"
 
 
 @pytest.fixture(scope="module")
-def studio(tmp_path_factory):
+def studio(tmp_path_factory, studio_database):
     """A real, migrated database in a temporary directory, plus the repositories.
 
     Module scoped so the seven migration files run once rather than once per
@@ -75,12 +75,13 @@ def studio(tmp_path_factory):
     workspace and nothing outside the temporary directory is touched.
     """
     folder = tmp_path_factory.mktemp("studio-library")
-    db = Database(folder / "studio.db")
+    db = Database(url=studio_database) if studio_database else Database(folder / "studio.db")
     db.migrate()
     config = load_config(
         {
             "STUDIO_DATA_DIR": str(folder / "data"),
             "STUDIO_ENV": "development",
+            "STUDIO_DATABASE_URL": studio_database,
         }
     )
     return {

@@ -7,6 +7,63 @@ the change. The repo's two products are siblings: **Prompt Layer**
 
 ## Unreleased
 
+### Phase 1 of the Vercel migration: Studio runs on Postgres
+
+`studio/db.py` now speaks Postgres as well as SQLite, behind the same interface.
+Choosing the engine is one value -- `STUDIO_DATABASE_URL` -- and
+`Database.from_config()` is the only place that decides. The same seven
+migrations apply to both; there is no second schema.
+
+**Verified, not assumed:** the full suite passes on SQLite (639 passed, 14
+skipped) *and* against a real PostgreSQL 17 server (653 passed, 0 skipped, 0
+failed). Both counts are after the change; the suite was 619 before it.
+
+Added:
+
+- **`studio/sql_dialect.py`** -- the finite list of differences between the
+  engines, each with the reason it exists: placeholder style, literal `%`
+  doubling (only when psycopg will interpolate), `INSERT OR IGNORE` ->
+  `ON CONFLICT DO NOTHING`, a statement splitter that respects comments and
+  string literals, and a row builder that works on either driver.
+- **`Database(url=...)` and `Database.from_config()`** -- the engine choice, on
+  the existing class rather than a parallel one, so the two `isinstance(db,
+  Database)` guards and every caller stay unchanged.
+- **`StudioIntegrityError`** -- one type for a constraint failure on either
+  engine. `_conflict_for` reads the engine's own message, so UNIQUE / CHECK /
+  FOREIGN KEY still map to the right error codes.
+- **(PG) a bounded connection pool**, `min_size=1`, `max_size=12`, released at
+  the end of every HTTP request via `Database.release()`.
+- **`tests/test_db_backend.py`** (34 tests) -- dialect translation, statement
+  splitting against SQLite's own tokenizer as the reference, row shape, engine
+  selection from configuration, migrations on an empty Postgres, write
+  round-trips, and a 40-thread connection test.
+- **`tests/test_supabase_migrations.py`** -- compares the migrated schema on
+  both engines table by table and column by column, and the applied version
+  list.
+- **`tests/conftest.py`** -- `STUDIO_TEST_POSTGRES` gives each test module its
+  own freshly created database and drops it afterwards. Unset means SQLite,
+  exactly as before.
+
+Fixed (found by running the suite against Postgres, not by reading it):
+
+- **A connection leak that would have taken the site down under load.** The
+  server is one thread per request, so a thread-local Postgres handle opened a
+  new server connection per request and never closed it. The first Postgres run
+  failed with `FATAL: sorry, too many clients already`. Now bounded by a pool
+  and released per request.
+- **`rowid` does not exist in Postgres** -- two ordering clauses used it. They
+  now order by `created_at`, which is the ordering key the rest of the code
+  already relies on.
+- **`COLLATE NOCASE` is a SQLite collation** -- four `ORDER BY` clauses used it
+  and answered HTTP 500 on Postgres. Replaced with `LOWER(...)`, which is plain
+  SQL and orders identically.
+- **The migration splitter cut statements at a semicolon inside a comment** --
+  produced `syntax error at end of input` on the first Postgres migration. The
+  splitter now tracks comments, quoted strings and dollar-quoted bodies.
+- **`dict(row)` on a psycopg row** -- `ValueError: dictionary update sequence
+  element #0`. Rows now come back as `studio.db.Row`, which answers `row["col"]`
+  and `row[0]` on either engine.
+
 ### Added (this session, across two commits and the merge)
 
 - **`studio/repository.py`** — `AssetRepository.list` now returns

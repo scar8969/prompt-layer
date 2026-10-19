@@ -147,7 +147,7 @@ def build_app(config: Optional[Configuration] = None, *, start_worker: bool = Fa
     settings = config or load_config()
     configure_logging(level=settings.log_level, json_output=settings.log_json)
 
-    db = Database(settings.database_path, settings.database.busy_timeout_ms)
+    db = Database.from_config(settings)
     applied = db.migrate()
     if applied:
         LOG.info("database migrated", extra={"versions": applied})
@@ -168,7 +168,9 @@ def build_app(config: Optional[Configuration] = None, *, start_worker: bool = Fa
     )
 
     router = Router()
-    http_app = HttpApp(router, sessions=sessions, limiter=limiter, config=settings)
+    http_app = HttpApp(
+        router, sessions=sessions, limiter=limiter, config=settings, database=db
+    )
 
     app = StudioApp(
         config=settings,

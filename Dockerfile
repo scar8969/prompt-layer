@@ -31,9 +31,16 @@ ENV PYTHONUNBUFFERED=1 \
 WORKDIR /app
 
 # Dependencies first, so a source edit does not re-run pip.
+# requirements.txt stays empty on purpose: it is what tells Vercel's Python
+# builder this repo is a functions project, and the Prompt Layer functions are
+# stdlib-only by design. Studio's own dependencies are installed explicitly, the
+# same way cryptography already was. psycopg is only needed when
+# STUDIO_DATABASE_URL points at Postgres; the SQLite default still runs without
+# it, which is why the import in studio/db.py is optional.
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt \
-    && pip install --no-cache-dir "cryptography>=42"
+    && pip install --no-cache-dir "cryptography>=42" \
+    && pip install --no-cache-dir "psycopg[binary]>=3.2,<4" "psycopg-pool>=3.2"
 
 # The application. tests/, scripts/ and docs/ are excluded by .dockerignore -
 # they are development input, not runtime input. web/dist is shipped, so the

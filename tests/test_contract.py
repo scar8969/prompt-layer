@@ -31,7 +31,7 @@ ENDPOINTS = os.path.join(REPO, "web", "src", "api", "endpoints.ts")
 
 
 @pytest.fixture(scope="module")
-def route_table():
+def route_table(studio_database):
     """The declared route table, from a real application build."""
     config = load_config(
         {
@@ -39,6 +39,7 @@ def route_table():
             "STUDIO_ENV": "development",
             "STUDIO_ENCRYPTION_KEY": "a" * 64,
             "STUDIO_AUTH_SECRET": "b" * 40,
+            "STUDIO_DATABASE_URL": studio_database,
         }
     )
     app = build_app(config)

@@ -602,6 +602,32 @@ python scripts/gen_studio_env.py > .studio_env.sh
 python scripts/run_studio.py --port 8091
 ```
 
+That runs on SQLite, which needs no service. To run the same app on Postgres,
+set one variable and install the driver:
+
+```
+pip install "psycopg[binary]>=3.2,<4" "psycopg-pool>=3.2"
+export STUDIO_DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/studio
+python scripts/run_studio.py --port 8091   # migrations apply on boot
+```
+
+The same seven migrations run on either engine -- there is no second schema to
+keep in step, and `docs/SCHEMA.md` lists the finite set of differences and where
+each one is handled. Verified by running the whole suite against a real
+PostgreSQL 17: **653 tests pass** there and **639 pass with 14 skipped** on
+SQLite.
+
+To run the suite against Postgres yourself:
+
+```
+STUDIO_TEST_POSTGRES=postgresql://USER:PASSWORD@HOST:5432/postgres python -m pytest -q
+```
+
+Each test module gets its own freshly created database, dropped afterwards, so
+that command is safe to repeat. `scripts/sanity_postgres.py` does the same job
+over live HTTP against a running server: register, session, connection, upload,
+read-back.
+
 Open `http://127.0.0.1:8091/api/system/status` for the live state, register an account, open **New connection**, pick the `mock` adapter, register a model, go to **Image Studio** and generate. The full BYOK flow (paste your real fal key, pick the provider, test, register a model, generate) is the same UI against a real connection.
 
 For verification end-to-end the helper scripts the maintainer ships are:
@@ -636,6 +662,6 @@ In full, from `docs/LIMITATIONS.md`:
 | the local backend refuses bodies larger than 512 MiB and has no retries | documented; a half-written object is worse than a clear refusal |
 | SQLite write contention under concurrent jobs | WAL + busy timeout + short write transactions; `docs/PLAN.md` calls this the scaling limit |
 
-The full test suite (**619 tests in ~60 s**) does not prove wire-format correctness on a real provider. It proves the contract holds under the mock adapter and the documented interfaces. The first run against a real key is also the first verification.
+The full test suite (**653 tests**, on SQLite or on Postgres) does not prove wire-format correctness on a real provider. It proves the contract holds under the mock adapter and the documented interfaces. The first run against a real key is also the first verification.
 
 MIT — see [LICENSE](LICENSE).

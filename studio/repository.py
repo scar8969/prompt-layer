@@ -69,7 +69,8 @@ from urllib.parse import urlsplit
 
 from .adapters.base import IMAGE_MODES, VIDEO_MODES
 from .adapters.core import get_adapter
-from .db import Database, rows_to_dicts
+from .db import Database, StudioIntegrityError, rows_to_dicts
+import sqlite3
 from .errors import (
     CAPABILITY_UNSUPPORTED,
     CONFLICT,
@@ -648,7 +649,7 @@ def _not_found(what: str) -> ApiError:
     return ApiError(NOT_FOUND, "That %s could not be found." % what)
 
 
-def _conflict_for(error: sqlite3.IntegrityError, what: str) -> ApiError:
+def _conflict_for(error: Exception, what: str) -> ApiError:
     """Turn the two interesting constraint failures into the right code.
 
     A UNIQUE violation means the name or key is taken: a conflict the caller can
@@ -883,7 +884,7 @@ class ConnectionRepository(_Repository):
             " AS model_count"
             " FROM api_connections c"
             " WHERE c.workspace_id = ? AND c.deleted_at IS NULL"
-            " ORDER BY c.name COLLATE NOCASE ASC",
+            " ORDER BY LOWER(c.name) ASC",
             (scope,),
         )
         out: List[Dict[str, Any]] = []
@@ -1043,7 +1044,7 @@ class ConnectionRepository(_Repository):
         try:
             with self._db.write_tx() as tx:
                 inserted = tx.insert(self.TABLE, record)
-        except sqlite3.IntegrityError as error:
+        except (StudioIntegrityError, sqlite3.IntegrityError) as error:
             raise _conflict_for(error, "connection name") from error
         return self.get(scope, inserted["id"])
 
@@ -1108,7 +1109,7 @@ class ConnectionRepository(_Repository):
                     "id = ? AND workspace_id = ? AND deleted_at IS NULL",
                     (connection_id, scope),
                 )
-        except sqlite3.IntegrityError as error:
+        except (StudioIntegrityError, sqlite3.IntegrityError) as error:
             raise _conflict_for(error, "connection name") from error
         return self.get(scope, connection_id)
 
@@ -1413,7 +1414,7 @@ class ModelRepository(_Repository):
             " FROM models m LEFT JOIN api_connections c ON c.id = m.connection_id"
             " WHERE " + " AND ".join(clauses) +
             " ORDER BY m.is_default DESC, m.is_favorite DESC,"
-            " m.display_name COLLATE NOCASE ASC"
+            " LOWER(m.display_name) ASC"
         )
         out: List[Dict[str, Any]] = []
         for row in rows_to_dicts(self._db.query(sql, params)):
@@ -1539,7 +1540,7 @@ class ModelRepository(_Repository):
         try:
             with self._db.write_tx() as tx:
                 inserted = tx.insert(self.TABLE, record)
-        except sqlite3.IntegrityError as error:
+        except (StudioIntegrityError, sqlite3.IntegrityError) as error:
             raise _conflict_for(error, "model key on that connection") from error
         return self.get(scope, inserted["id"])
 
@@ -1631,7 +1632,7 @@ class ModelRepository(_Repository):
                     "id = ? AND workspace_id = ?",
                     (model_id, scope),
                 )
-        except sqlite3.IntegrityError as error:
+        except (StudioIntegrityError, sqlite3.IntegrityError) as error:
             raise _conflict_for(error, "model key on that connection") from error
         return self.get(scope, model_id)
 
@@ -1949,7 +1950,7 @@ class ProjectRepository(_Repository):
             "   WHERE pa.project_id = p.id AND a.deleted_at IS NULL) AS asset_count,"
             " (SELECT COUNT(*) FROM generation_jobs j WHERE j.project_id = p.id) AS job_count"
             " FROM projects p WHERE " + " AND ".join(clauses) +
-            " ORDER BY p.updated_at DESC, p.name COLLATE NOCASE ASC"
+            " ORDER BY p.updated_at DESC, LOWER(p.name) ASC"
         )
         return self._all(sql, params)
 
@@ -2778,7 +2779,7 @@ class JobRepository(_Repository):
                 raise _not_found("job")
         rows = self._db.query(
             "SELECT id, job_id, status, message, detail_json, created_at"
-            " FROM job_events WHERE job_id = ? ORDER BY created_at ASC, rowid ASC",
+            " FROM job_events WHERE job_id = ? ORDER BY created_at ASC",
             (job_id,),
         )
         return [
@@ -2988,7 +2989,7 @@ class JobRepository(_Repository):
                         "created_at": stamp,
                     },
                 )
-        except sqlite3.IntegrityError as error:
+        except (StudioIntegrityError, sqlite3.IntegrityError) as error:
             message = str(error).lower()
             if "idempotency" in message or "unique" in message:
                 raise ApiError(
@@ -3378,7 +3379,7 @@ class JobRepository(_Repository):
                     "id = ? AND workspace_id = ?",
                     (job_id, scope),
                 )
-        except sqlite3.IntegrityError as error:
+        except (StudioIntegrityError, sqlite3.IntegrityError) as error:
             raise ApiError(
                 CONFLICT,
                 "That output batch has already been recorded for this job.",
@@ -3846,7 +3847,7 @@ class LibraryRepository(_Repository):
             " p.required_references_json, p.camera_settings_json, p.tags_json,"
             " p.is_builtin, p.created_at, p.updated_at"
             " FROM presets p WHERE " + " AND ".join(clauses) +
-            " ORDER BY p.is_builtin DESC, p.category ASC, p.name COLLATE NOCASE ASC"
+            " ORDER BY p.is_builtin DESC, p.category ASC, LOWER(p.name) ASC"
         )
         return self._all(sql, params)
 
@@ -3927,7 +3928,7 @@ class LibraryRepository(_Repository):
         try:
             with self._db.write_tx() as tx:
                 inserted = tx.insert("presets", record)
-        except sqlite3.IntegrityError as error:
+        except (StudioIntegrityError, sqlite3.IntegrityError) as error:
             raise _conflict_for(error, "preset slug") from error
         return self.get_preset(scope, inserted["id"])
 
@@ -4004,7 +4005,7 @@ class LibraryRepository(_Repository):
                 self._db.update_where(
                     "presets", updates, "id = ? AND workspace_id = ?", (preset_id, scope)
                 )
-        except sqlite3.IntegrityError as error:
+        except (StudioIntegrityError, sqlite3.IntegrityError) as error:
             raise _conflict_for(error, "preset slug") from error
         return self.get_preset(scope, preset_id)
 
@@ -4780,7 +4781,7 @@ class AuditRepository(_Repository):
         scope = _require_workspace(workspace_id)
         sql = (
             "SELECT * FROM audit_log WHERE workspace_id = ?"
-            " ORDER BY created_at DESC, rowid DESC LIMIT ?"
+            " ORDER BY created_at DESC LIMIT ?"
         )
         return self._all(sql, (scope, int(clamp(int(limit), 1, 200))))
 

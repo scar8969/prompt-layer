@@ -19,6 +19,7 @@ Design notes that matter:
 
 from __future__ import annotations
 
+import contextlib
 import json
 import mimetypes
 import os
@@ -401,12 +402,17 @@ class HttpApp:
         sessions: Any,
         limiter: Any,
         config: Any,
+        database: Any = None,
         hooks: Optional[Dict[str, Callable[[RequestContext], None]]] = None,
     ) -> None:
         self.router = router
         self.sessions = sessions
         self.limiter = limiter
         self.config = config
+        #: Held so a finished request can hand its Postgres connection back to
+        #: the pool. Without it, one thread per request leaks one connection per
+        #: request until the server refuses new ones.
+        self.database = database
         self.hooks = dict(hooks or {})
         self.limits = HttpLimits(
             max_body_bytes=MAX_BODY_BYTES,
@@ -437,6 +443,12 @@ class HttpApp:
                 provider_message=type(error).__name__,
             )
             response = self.error_response(request, internal)
+        finally:
+            # One HTTP thread per request, so without this every request would
+            # hold its Postgres connection until the pool timed it out.
+            if self.database is not None:
+                with contextlib.suppress(Exception):
+                    self.database.release()
         return self._decorate(request, response)
 
     def _dispatch(self, request: RequestContext) -> Response:

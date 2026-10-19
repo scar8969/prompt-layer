@@ -125,7 +125,7 @@ class Client:
 
 
 @pytest.fixture(scope="module")
-def studio(tmp_path_factory):
+def studio(tmp_path_factory, studio_database):
     """A whole platform: migrated database, local object store, live HTTP server."""
     data_dir = str(tmp_path_factory.mktemp("studio"))
     # The port has to be known before the app is built, because the origin
@@ -147,6 +147,7 @@ def studio(tmp_path_factory):
             "STUDIO_RATE_LIMIT_PER_MINUTE": "100000",
             "STUDIO_CREDENTIAL_RATE_LIMIT_PER_MINUTE": "100000",
             "STUDIO_JOB_WORKERS": "0",
+            "STUDIO_DATABASE_URL": studio_database,
         }
     )
     app = build_app(config)

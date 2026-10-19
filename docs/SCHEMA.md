@@ -1,8 +1,58 @@
 # Database schema
 
-Source of truth: the six SQL files in `studio/migrations/`, applied in filename
+Source of truth: the seven SQL files in `studio/migrations/`, applied in filename
 order by `Database.migrate()` in `studio/db.py`. The runner also creates one
 table of its own, `schema_migrations`, before applying anything.
+
+## One schema, two engines
+
+The same seven migrations apply to SQLite and to Postgres. That is not luck: the
+schema deliberately uses `TEXT` primary keys (uuid4, never a sequence), `TEXT`
+ISO-8601 timestamps at microsecond precision, and `INTEGER` 0/1 for booleans, so
+no column type changes meaning between the engines and there is no second
+migration set to keep in step.
+
+`tests/test_supabase_migrations.py` compares the *result* of migrating both
+engines -- table by table, column by column, in order -- rather than trusting
+that both runs exited zero.
+
+### The engine is chosen by one value
+
+```
+STUDIO_DATABASE_URL=            ->  SQLite at STUDIO_DATABASE_PATH
+STUDIO_DATABASE_URL=postgres... ->  Postgres
+```
+
+`Database.from_config()` is the only place that decision is made.
+
+### What differs, and where it is handled
+
+| Concern | SQLite | Postgres | Handled in |
+|---|---|---|---|
+| Placeholders | `?` | `%s` | `studio/sql_dialect.py` |
+| Literal `%` in SQL | `50%` | `50%%` (when parameters are passed) | `studio/sql_dialect.py` |
+| Conflict-tolerant insert | `INSERT OR IGNORE` | `ON CONFLICT DO NOTHING` | `studio/sql_dialect.py` |
+| Constraint failure type | `sqlite3.IntegrityError` | `psycopg.errors.*` | re-raised as `StudioIntegrityError` |
+| Failed statement | transaction continues | transaction **aborts** | `Transaction.mark_aborted()` |
+| Case-insensitive sort | `COLLATE NOCASE` | `LOWER(...)` | the four queries that need it |
+| Schema introspection | `PRAGMA table_info` | `information_schema` | `Database.table_columns` |
+| Connection model | thread-local file handle | bounded pool (12) | `Database.connection` / `release` |
+| Row shape | `sqlite3.Row` | `studio.db.Row` | one class, both access styles |
+
+The transaction-abort row is the one that bites hardest. On SQLite a failed
+`INSERT` leaves the transaction usable, so code can catch the error and carry on;
+on Postgres every later statement in that transaction raises
+`current transaction is aborted`. `Transaction.mark_aborted()` records that and
+makes the enclosing block roll back instead of attempting a doomed `COMMIT`.
+Every current caller already opens its own `write_tx` per constraint, so no
+existing behaviour depended on the SQLite leniency -- the mechanism exists so a
+future caller cannot be caught by surprise.
+
+There is no `rowid` in Postgres. The two queries that used it as an
+insertion-order tiebreaker now order by `created_at` alone, which is fixed-width
+microsecond ISO-8601 and therefore sorts correctly as text. Two rows stamped in
+the same microsecond have an unspecified relative order; the alternative was a
+sequence column, and the schema has no sequence anywhere else.
 
 After a fresh migration the database contains 26 tables:
 
