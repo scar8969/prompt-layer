@@ -7,6 +7,68 @@ the change. The repo's two products are siblings: **Prompt Layer**
 
 ## Unreleased
 
+### Phases 2-5: Studio is deployable to Vercel
+
+Studio now runs as a request-scoped function plus a scheduled tick, instead of
+only as a long-lived process. Nothing about the application changed: the same
+`HttpApp.handle(RequestContext)` that the socket server calls is what the function
+calls, so routing, auth, CSRF, rate limiting, redaction and error envelopes are
+the deployed code, not a second implementation.
+
+Verified: **686 tests pass** against Postgres + a live S3-compatible server;
+**664 pass with 22 skipped** on SQLite with no S3 endpoint.
+
+Added:
+
+- **`studio/serverless.py`** -- the bridge. `build_app(start_worker=False)` keeps
+  worker threads out of a request-scoped process; `make_request` builds the same
+  `RequestContext` the socket handler builds; `handle()` returns the same
+  `Response`. Also holds `application_path()` (mount-prefix translation) and
+  `authorised()` (the cron secret check), both there so they are unit-testable
+  without importing a Vercel function file.
+- **`api/studio.py`** -- one catch-all function at `/api/studio/*`. One, not
+  eight, because splitting by route group would mean re-encoding the same
+  prefixes in `vercel.json`, where a mismatch is invisible until a 404 in
+  production. The prefix exists because `/api/health`, `/api/models` and
+  `/api/presets` already belong to the Prompt Layer functions in this repository.
+- **`studio/tick.py`** -- one pass of generation work per invocation, bounded by
+  `limit` and `budget_seconds`. A killed invocation leaves a job holding a lease,
+  so the tick stops claiming well before `maxDuration` rather than overrunning.
+- **`api/studio_cron.py`** -- the scheduled endpoint, guarded by `CRON_SECRET`.
+  Unset means it refuses everything: the URL is public, and an open queue is
+  other people spending the provider's credit.
+- **Phase 5: `VITE_STUDIO_API_PREFIX`.** The React client prefixes every request
+  path in one place (`buildUrl`), so 74 route definitions did not need editing.
+  Built with `VITE_STUDIO_API_PREFIX=/api/studio npx vite build` and verified the
+  prefix is in the bundle.
+- **`vercel.json`** -- rewrites for the mount, a cron entry, per-function memory
+  and timeouts, and excludes so `web/node_modules` and `web/dist` do not bloat
+  the function bundle.
+
+Fixed:
+
+- **Storage now fails closed when it is asked for S3 and cannot do it.** The old
+  behaviour fell back to the local disk, which on a serverless platform means
+  every upload and every generated file appears to succeed and then vanishes.
+  `STUDIO_STORAGE_BACKEND=s3` with settings missing is now a
+  `configuration_required` error naming the four variables.
+- **`application_path` dropped the platform header when it carried the prefix**,
+  which would have routed every request to the raw path. Caught by its own test.
+
+Verified against real services, not assumed:
+
+- **S3 `put`/`get`/`list_prefix`/`signed_url`/`delete` against a live
+  S3-compatible server** (moto). `docs/LIMITATIONS.md` had recorded that
+  `S3ObjectStore` had never run against a live bucket; it has now.
+- **The `Authorization` header matches botocore byte for byte** for PUT, GET and
+  DELETE (`scripts/check_sigv4_parity.py`). This matters because moto accepts a
+  *wrong* secret on a header-signed request, so the round trip alone does not
+  prove the signature.
+- **A submitted job reaches `completed` with an output and an asset** driven only
+  by ticks: submit over the bridge, tick to submit, tick again to poll
+  (`scripts/probe_tick_e2e.py`).
+
+
 ### Phase 1 of the Vercel migration: Studio runs on Postgres
 
 `studio/db.py` now speaks Postgres as well as SQLite, behind the same interface.

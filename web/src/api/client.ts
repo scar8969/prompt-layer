@@ -113,9 +113,43 @@ export function subscribeToRequests(listener: (event: ApiRequestEvent) => void):
   };
 }
 
+/**
+ * Where the Studio API lives, as a prefix in front of every route path.
+ *
+ * Empty when the client is served by the same process as the API, which is how
+ * `python -m studio.app` and the Docker image both work: the React build is
+ * served from the same origin, so `/api/health` is the right address.
+ *
+ * Set at build time when the API is mounted somewhere else. The Vercel
+ * deployment is that case: Studio's routes are served by one function under
+ * `/api/studio`, because `/api/health`, `/api/models` and `/api/presets` already
+ * belong to the Prompt Layer functions in the same repository. Building with
+ *
+ *     VITE_STUDIO_API_PREFIX=/api/studio
+ *
+ * rewrites every request path in one place rather than editing 74 endpoint
+ * definitions. The trailing slash is stripped so a value written either way
+ * produces one slash, not two.
+ */
+export const API_PREFIX: string = (() => {
+  const configured =
+    typeof import.meta !== 'undefined' && import.meta.env
+      ? String(import.meta.env.VITE_STUDIO_API_PREFIX ?? '')
+      : '';
+  const trimmed = configured.trim().replace(/\/+$/, '');
+  return trimmed;
+})();
+
+/** The path a request should actually be sent to. */
+export function withApiPrefix(path: string): string {
+  if (!API_PREFIX) return path;
+  if (path.startsWith(API_PREFIX)) return path;
+  return `${API_PREFIX}${path.startsWith('/') ? '' : '/'}${path}`;
+}
+
 function buildUrl(path: string, query?: RequestOptions['query']): string {
   const base = typeof location === 'undefined' ? 'http://localhost' : location.origin;
-  const url = new URL(path, base);
+  const url = new URL(withApiPrefix(path), base);
   if (query) {
     for (const [key, value] of Object.entries(query)) {
       if (value === undefined || value === null || value === '') continue;

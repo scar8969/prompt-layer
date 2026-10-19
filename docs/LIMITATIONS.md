@@ -75,17 +75,64 @@ misconfigured custom provider shows an error where a tolerant implementation
 would have shown something. This is intentional and is the reason the feature is
 safe to expose.
 
+## Deployment (Vercel)
+
+### The Vercel deployment has not been exercised on Vercel
+
+Phases 2-5 are built and tested locally: the serverless bridge, the cron tick, the
+storage backend and the frontend prefix all work against real Postgres and a real
+S3-compatible server. **None of it has run on Vercel itself.** What is unverified
+is platform behaviour rather than application behaviour:
+
+- **Cold starts.** `build_app` runs on first request in an instance, which
+  includes `db.migrate()`. Idempotent, but the first request to a cold instance is
+  slower, and memory is capped at 1024 MB in `vercel.json`.
+- **The rewrite.** `/api/studio/(.*)` -> `/api/studio` is exercised locally
+  through `application_path`, not through Vercel's rewrite engine.
+- **Cron delivery.** `vercel.json` registers `/api/studio_cron` every minute.
+  That it fires, and that `CRON_SECRET` arrives as a bearer token, is per the
+  documented platform behaviour and has not been observed.
+- **Function bundling.** The `excludeFiles` globs keep `web/node_modules` and
+  `web/dist` out of the function. Whether the bundle stays under the size limit
+  with `studio/` plus `psycopg` has not been measured on the platform.
+
+### One function serves every Studio route
+
+`api/studio.py` handles all Studio paths, so a cold instance pays for the whole
+application rather than one route group. That is a deliberate trade for not
+duplicating the route table in `vercel.json`; if function size or cold-start
+latency becomes a problem, splitting by group is the change, and the route table
+in `studio/routes/` is the source of truth for the split.
+
 ## Storage
 
-### The S3 storage backend has never been run against a live bucket
+### The S3 storage backend is verified against a local S3 server, not against a
+cloud bucket
+
+`S3ObjectStore` has now been run end to end against a live S3-compatible server
+(moto): put, get, list, pre-signed URL, delete, plus a tampered-URL rejection. Its
+`Authorization` header also matches botocore byte for byte for PUT, GET and DELETE.
+
+What that does **not** prove:
+
+- **No cloud bucket has been used.** Supabase Storage, R2, B2 and real AWS differ
+  in CORS defaults, bucket policies, region redirects and pre-signed URL
+  lifetimes. The first upload against the real bucket is the first real test.
+- **The local server does not validate header signatures.** It accepts a wrong
+  secret on a header-signed PUT. That is why the botocore comparison exists: it
+  checks the signature that moto let through unchallenged.
+
+### The S3 backend has been exercised, but not against a cloud bucket
 
 `S3ObjectStore` in `studio/storage.py` implements AWS Signature Version 4 with
-`hashlib`/`hmac` only (no boto3). Its two signing paths reproduce the worked
-examples in the AWS documentation byte for byte, and its error mapping is written
-from the published protocol — but **no PUT, HEAD, listing or presigned GET has
-ever reached a real bucket.** Consequence: the local backend is the only one that
-has been exercised, and it is the default. Do not select `s3` until somebody has
-pointed it at a bucket and watched those four calls succeed.
+`hashlib`/`hmac` only (no boto3). PUT, GET, listing, pre-signed GET and DELETE have
+now all run against a live S3-compatible server, and the `Authorization` header
+matches botocore byte for byte for PUT, GET and DELETE. The local backend is still
+the default, because it needs no configuration.
+
+What is left unproven is the cloud itself: CORS defaults, bucket policies, region
+redirects and pre-signed URL lifetimes differ per provider, and none of that has
+been observed on Supabase Storage, R2, B2 or AWS. See "Deployment (Vercel)" above.
 
 The local backend also refuses a body larger than `MAX_OBJECT_BYTES`
 (512 MiB) rather than streaming it in pieces, and there are no retries, no

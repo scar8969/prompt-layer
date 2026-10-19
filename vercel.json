@@ -7,22 +7,54 @@
     "api/compile.py": {
       "memory": 512,
       "maxDuration": 60,
-      "excludeFiles": "{tests/**,scripts/**,promptlayer/vendor/**,docs/**,**/__pycache__/**,**/test_*.py,requirements-dev.txt,dev.py}"
+      "excludeFiles": "{tests/**,scripts/**,promptlayer/vendor/**,web/node_modules/**,web/dist/**,studio/**,docs/**,**/__pycache__/**,**/test_*.py,requirements-dev.txt,dev.py}"
+    },
+    "api/studio_cron.py": {
+      "memory": 1024,
+      "maxDuration": 60,
+      "excludeFiles": "{tests/**,scripts/**,promptlayer/vendor/**,promptlayer/**,promptlayer/*.py,web/node_modules/**,docs/**,**/__pycache__/**,**/test_*.py,requirements-dev.txt,dev.py}"
+    },
+    "api/studio.py": {
+      "memory": 1024,
+      "maxDuration": 60,
+      "excludeFiles": "{tests/**,scripts/**,promptlayer/vendor/**,promptlayer/**,promptlayer/*.py,web/node_modules/**,web/dist/**,docs/**,**/__pycache__/**,**/test_*.py,requirements-dev.txt,dev.py}"
     },
     "api/*.py": {
       "memory": 512,
       "maxDuration": 15,
-      "excludeFiles": "{tests/**,scripts/**,promptlayer/vendor/**,docs/**,**/__pycache__/**,**/test_*.py,requirements-dev.txt,dev.py}"
+      "excludeFiles": "{tests/**,scripts/**,promptlayer/vendor/**,web/node_modules/**,web/dist/**,studio/**,docs/**,**/__pycache__/**,**/test_*.py,requirements-dev.txt,dev.py}"
     }
   },
+  "rewrites": [
+    {
+      "source": "/api/studio/(.*)",
+      "destination": "/api/studio"
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/studio_cron",
+      "schedule": "* * * * *"
+    }
+  ],
   "headers": [
     {
       "source": "/api/(.*)",
-      "headers": [{ "key": "Cache-Control", "value": "no-store" }]
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store"
+        }
+      ]
     },
     {
       "source": "/index.html",
-      "headers": [{ "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }]
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, must-revalidate"
+        }
+      ]
     }
   ]
 }

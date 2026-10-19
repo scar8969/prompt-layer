@@ -614,7 +614,8 @@ python scripts/run_studio.py --port 8091   # migrations apply on boot
 The same seven migrations run on either engine -- there is no second schema to
 keep in step, and `docs/SCHEMA.md` lists the finite set of differences and where
 each one is handled. Verified by running the whole suite against a real
-PostgreSQL 17: **657 tests pass** there and **639 pass with 18 skipped** on
+PostgreSQL 17 and a live S3 server: **686 tests pass** there and **664 pass
+with 22 skipped** on
 SQLite.
 
 To run the suite against Postgres yourself:
@@ -636,6 +637,29 @@ For verification end-to-end the helper scripts the maintainer ships are:
 python scripts/smoke_studio.py            # register → login → connection → test → model → generation → asset stored
 python scripts/repro_assets_list.py      # live reproduction of the assets.list regression
 ```
+
+## Deploy it on Vercel
+
+Studio runs there as a request-scoped function plus a scheduled tick, because a
+serverless process is frozen between invocations and cannot hold a worker thread.
+
+```
+POST /api/studio/api/...     -> api/studio.py, one catch-all function
+GET  /api/studio_cron        -> api/studio_cron.py, on a one-minute schedule
+```
+
+Set on the deployment:
+
+| Variable | Why |
+|---|---|
+| `STUDIO_DATABASE_URL` | Postgres. A discarded filesystem cannot hold SQLite. |
+| `STUDIO_STORAGE_BACKEND=s3` + the four storage settings | Same reason for uploads and generated files. Asking for `s3` without them is a hard error, not a silent fall back to disk. |
+| `CRON_SECRET` | Guards the tick. Unset refuses everything. |
+| `STUDIO_ENCRYPTION_KEY`, `STUDIO_AUTH_SECRET` | 32 bytes each, hex or base64. Env only — nothing is auto-generated on a deployment. |
+| `VITE_STUDIO_API_PREFIX=/api/studio` | Build-time, for the client. |
+
+The mount prefix exists because `/api/health`, `/api/models` and `/api/presets`
+already belong to the Prompt Layer functions in this repository.
 
 ## Deploy it
 
@@ -662,6 +686,6 @@ In full, from `docs/LIMITATIONS.md`:
 | the local backend refuses bodies larger than 512 MiB and has no retries | documented; a half-written object is worse than a clear refusal |
 | SQLite write contention under concurrent jobs | WAL + busy timeout + short write transactions; `docs/PLAN.md` calls this the scaling limit |
 
-The full test suite (**657 tests**, on SQLite or on Postgres) does not prove wire-format correctness on a real provider. It proves the contract holds under the mock adapter and the documented interfaces. The first run against a real key is also the first verification.
+The full test suite (**686 tests**, on SQLite or on Postgres) does not prove wire-format correctness on a real provider. It proves the contract holds under the mock adapter and the documented interfaces. The first run against a real key is also the first verification.
 
 MIT — see [LICENSE](LICENSE).

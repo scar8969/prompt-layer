@@ -1114,7 +1114,8 @@ def store_from_config(config: Any, *, data_dir: str = "") -> ObjectStore:
     bucket = getattr(storage, "bucket", "") or ""
     access_key = getattr(storage, "access_key", "") or ""
     secret_key = getattr(storage, "secret_key", "") or ""
-    if (
+    backend = str(getattr(storage, "backend", "local") or "local").strip().lower()
+    complete = (
         isinstance(endpoint, str)
         and endpoint.strip()
         and isinstance(bucket, str)
@@ -1123,7 +1124,8 @@ def store_from_config(config: Any, *, data_dir: str = "") -> ObjectStore:
         and access_key.strip()
         and isinstance(secret_key, str)
         and secret_key.strip()
-    ):
+    )
+    if complete:
         return S3ObjectStore(
             endpoint=endpoint.strip(),
             region=str(getattr(storage, "region", "") or "us-east-1"),
@@ -1133,6 +1135,31 @@ def store_from_config(config: Any, *, data_dir: str = "") -> ObjectStore:
             verify_tls=True,
             path_style=bool(getattr(storage, "force_path_style", True)),
         )
+
+    # Asking for s3 and getting the local disk back would be the worst outcome:
+    # every write appears to succeed and every object disappears when the
+    # process is replaced. On a serverless platform that is immediate; on a
+    # container it is the next deploy. Fail loudly instead, naming the missing
+    # variables, so a misconfigured deployment says so on its first upload.
+    if backend == "s3":
+        missing = [
+            name
+            for name, value in (
+                ("STUDIO_STORAGE_ENDPOINT", endpoint),
+                ("STUDIO_STORAGE_BUCKET", bucket),
+                ("STUDIO_STORAGE_ACCESS_KEY", access_key),
+                ("STUDIO_STORAGE_SECRET_KEY", secret_key),
+            )
+            if not (isinstance(value, str) and value.strip())
+        ]
+        raise ApiError(
+            CONFIGURATION_REQUIRED,
+            "This deployment is configured for S3 storage but is missing settings.",
+            details={"missing": missing or ["(unknown)"]},
+            hint="Set the storage endpoint, bucket, access key and secret key, "
+                 "or set STUDIO_STORAGE_BACKEND=local for a disk-backed install.",
+        )
+
     configured = getattr(storage, "root", "") or ""
     root = str(configured).strip()
     if not root or root in (".", "./"):

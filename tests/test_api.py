@@ -59,12 +59,22 @@ def test_every_function_in_api_exports_a_handler_and_nothing_is_a_dependency():
     framework preset would stop that. So every file here exports a
     BaseHTTPRequestHandler subclass, and nothing in the repo imports anything
     outside the standard library.
+
+    Two files here are Studio's, not the Prompt Layer's: `studio.py` serves every
+    Studio route under /api/studio, and `studio_cron.py` is the scheduled worker.
+    They expose a `handler` like the rest, so the deployment shape is unchanged;
+    what differs is that they import the `studio` package, which is allowed
+    because it is in this repository. Its third-party dependencies (psycopg,
+    cryptography) are installed by the Dockerfile and are optional at import time
+    -- `studio/db.py` degrades to "not installed" rather than failing, so a
+    deployment that never sets STUDIO_DATABASE_URL still starts.
     """
     from http.server import BaseHTTPRequestHandler
 
     files = sorted(n for n in os.listdir(API_DIR) if n.endswith(".py"))
     assert files == ["compile.py", "health.py", "improve.py", "models.py", "preflight.py",
-                     "presets.py", "reference.py", "storyboard.py", "video.py"]
+                     "presets.py", "reference.py", "storyboard.py", "studio.py",
+                     "studio_cron.py", "video.py"]
     for name in files:
         handler = _load_function(name[:-3])
         assert isinstance(handler, type) and issubclass(handler, BaseHTTPRequestHandler), name
@@ -74,6 +84,14 @@ def test_every_function_in_api_exports_a_handler_and_nothing_is_a_dependency():
     # Only the shipped code: /api and promptlayer/. The parsers under scripts/
     # and the tests are dev-only and are excluded from the function bundle, so
     # PyYAML there is fine — the rule is that what deploys has no dependencies.
+    #
+    # `studio` is allowed for the same reason `promptlayer` is: it is this
+    # repository's own code, not a third-party package. What the rule actually
+    # protects is that a deployed function never needs a package that is not
+    # already installed, and both packages ship in the repo. Studio's own
+    # dependencies are declared in the Dockerfile and are optional at import
+    # time (see studio/db.py), so a deployment without them still boots.
+    local_packages = {"promptlayer", "studio"}
     for folder in (os.path.join(REPO, "api"), os.path.join(REPO, "promptlayer")):
         for root, dirs, names in os.walk(folder):
             dirs[:] = [d for d in dirs if d not in (".git", "__pycache__", "vendor")]
@@ -87,7 +105,7 @@ def test_every_function_in_api_exports_a_handler_and_nothing_is_a_dependency():
                         if not match:
                             continue
                         top = match.group(1).split(".")[0]
-                        if top in stdlib or top == "promptlayer":
+                        if top in stdlib or top in local_packages:
                             continue
                         offenders.append(f"{os.path.relpath(path, REPO)}: {line.strip()}")
     assert offenders == [], offenders
