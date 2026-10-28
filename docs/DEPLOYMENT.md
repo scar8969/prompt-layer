@@ -54,23 +54,68 @@ Already configured. `vercel.json`:
 
 ### Where state lives on Vercel
 
-It does not. The functions are stateless and read only what is in the bundle:
+Not on the platform. Studio's function talks to a Postgres database
+(`STUDIO_DATABASE_URL`) and an S3-compatible object store
+(`STUDIO_STORAGE_BACKEND=s3`), both configured as environment variables.
 
-* No SQLite file. `studio/*` is imported by nothing in `api/`, so no database is
-  opened.
-* No object storage. `index.html` and the JSON responses are the whole surface.
-* `/api/health` reports what it can compute: the count of models in the
-  vendored dataset.
+The filesystem the function runs on is read-only apart from `/tmp`, and `/tmp`
+is per-instance and discarded, so nothing durable is written to it. The
+encryption key and the auth secret come from the environment too
+(`STUDIO_ENCRYPTION_KEY`, `STUDIO_AUTH_SECRET`); the file-backed fallback that
+`studio/config.py` writes when they are unset is for local runs and does not
+apply to a deployment.
 
-When Studio is eventually added as a function, this shape cannot hold its state:
-Vercel's filesystem is read-only apart from `/tmp`, and `/tmp` is per-instance
-and discarded. A Vercel deployment of Studio therefore needs either the S3
-storage backend plus a networked database (neither is wired), or it must not be
-deployed this way. See `docs/LIMITATIONS.md`.
+### What the build actually ships
+
+Two layers ship files, and they are configured separately:
+
+| Layer | What it is | Configured by |
+|---|---|---|
+| the static layer | everything the domain serves at the root | `.vercelignore` |
+| each function's bundle | the code and dependencies one function runs | that function's `excludeFiles` in `vercel.json` |
+
+A file excluded from one and not the other still ships. `scripts/check_built_output.py`
+reads the built output — not the configuration — and reports what would actually
+be published:
+
+```
+$ vercel build --prod --yes
+$ python scripts/check_built_output.py
+OK       studio.func       files= 1066
+OK       studio_cron.func  files= 1066
+OK       static             files=  152
+
+the built output publishes nothing it should not
+```
+
+Three things this check found that no local test could see, because locally the
+whole working tree is present:
+
+1. **`var/` was published.** It holds `studio.db`, `.studio-encryption-key` and
+   `.studio-auth-secret`. The encryption key opens every sealed provider
+   credential in the database, so this was a disclosure, not a nuisance.
+2. **The function bundle had no `psycopg` and no `cryptography`.** The platform
+   prefers `uv.lock` over `requirements.txt` when both exist, and the lock
+   declared no dependencies — so the bundle shipped `pip` and nothing else. The
+   fix was to declare the three packages in `pyproject.toml`, which is what the
+   lock is built from. `requirements.txt` stays empty on purpose: it is what
+   stops the platform detecting a framework preset.
+3. **`web/dist` was excluded from the function that serves it.** `api/studio.py`
+   serves the built client out of `web/dist`, and its `excludeFiles` listed
+   `web/dist/**`. Every page request would have 404'd on the deployment while
+   working perfectly on the machine that built it.
+
+`tests/test_deploy.py` now pins all three, so a new function or a changed
+ignore file cannot reintroduce them.
 
 ### Health check
 
 `GET /api/health` -> `200 {"success": true, "status": "ok", "models": 20}`.
+
+Studio's own status route is `GET /api/studio/api/system/status`, and it
+reports what the running instance actually has: the database and storage
+backends, the adapter slugs from the live registry, the missing configuration
+keys, the egress policy, and whether the worker is running.
 
 ### Logs
 

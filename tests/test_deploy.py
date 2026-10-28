@@ -88,20 +88,203 @@ def test_the_dev_only_paths_are_not_published():
     emulator already refuses those paths (dev.py serves an allowlist), so this is
     the deployed half of the same rule -- otherwise what you check locally is not
     what you shipped.
+
+    pyproject.toml and uv.lock are deliberately not on this list. They used to
+    be build artifacts the CLI wrote; now the platform reads the lock to
+    install the function's dependencies, so they have to be uploaded. See
+    test_the_deployed_functions_have_their_dependencies.
     """
     ignored = set(_lines(".vercelignore"))
     for entry in ("tests/", "scripts/", "docs/", "dev.py", "requirements-dev.txt",
-                  ".python-version", "pyproject.toml", "uv.lock"):
+                  ".python-version", "var/", ".studio_env.sh", "prompt-studio.env"):
         assert entry in ignored, f"{entry} would be published at the deployment's URL"
 
 
 def test_the_files_the_cli_writes_are_kept_out_of_the_repo():
-    """A local `vercel build` writes .python-version, pyproject.toml and uv.lock.
+    """A local `vercel build` writes .python-version.
 
-    They describe a project that does not exist (name "app", no dependencies), and a
-    pyproject.toml in the root is itself one of the files that makes Vercel detect a
-    Python framework preset. They are build output.
+    It is a one-line version pin with nothing in it, and the platform reads it
+    to choose the runtime, so it is not committed -- but it does have to be in
+    the upload, which the test above covers.
+
+    pyproject.toml and uv.lock used to be on this list. They were build output
+    then, describing a project called "app" with no dependencies. Now they are
+    the deployment's dependency list: the platform reads the lock to install
+    cryptography, psycopg and psycopg-pool, and without them the built
+    function ships pip and nothing else. So they are committed, and they are
+    uploaded.
     """
     ignored = set(_lines(".gitignore"))
-    for entry in (".python-version", "pyproject.toml", "uv.lock", ".vercel/", ".env*"):
+    for entry in (".python-version", ".vercel/", ".env*"):
         assert entry in ignored, entry
+
+
+def test_a_function_keeps_what_it_reads_at_runtime():
+    """A function that opens a path must keep that path in its bundle.
+
+    Vercel bundles every project file reachable at build time, minus the ones the
+    function's ``excludeFiles`` pattern removes. A pattern that removes something
+    the handler opens is a 404 in production that no local test can see, because
+    locally the whole working tree is present.
+
+    This bit us once: ``api/studio.py`` serves the built React client out of
+    ``web/dist``, and its excludeFiles listed ``web/dist/**``. Every page request
+    would have 404'd on the deployment while working perfectly on this machine.
+
+    Only the *first* matching pattern customises a function. Vercel rejects a
+    pattern that a preceding pattern already matched, so the wildcard ``api/*.py``
+    never applies to a file that has its own entry -- see
+    test_a_specific_function_pattern_is_listed_before_the_wildcard.
+    """
+    #: What each function reads at runtime, and therefore must ship with it.
+    required = {
+        "api/studio.py": ("studio/**", "web/dist/**"),
+        "api/studio_cron.py": ("studio/**",),
+        "api/compile.py": ("promptlayer/**",),
+        "api/preflight.py": ("promptlayer/**",),
+        "api/improve.py": ("promptlayer/**",),
+        "api/models.py": ("promptlayer/**",),
+        "api/presets.py": ("promptlayer/**",),
+        "api/storyboard.py": ("promptlayer/**",),
+        "api/reference.py": ("promptlayer/**",),
+        "api/video.py": ("promptlayer/**",),
+    }
+    functions = json.loads(_read("vercel.json"))["functions"]
+    for name, needs in required.items():
+        # The first pattern that matches is the one that customises this file.
+        excluded = ""
+        for pattern, options in functions.items():
+            if pattern == name or fnmatch.fnmatch(name, pattern):
+                excluded = options.get("excludeFiles", "")
+                break
+        else:
+            raise AssertionError(f"{name} has no entry in vercel.json")
+        for need in needs:
+            assert need not in excluded, (
+                f"{name} reads {need} at runtime but its excludeFiles removes "
+                f"it, so the deployed function would 404"
+            )
+
+
+def test_the_studio_client_is_committed_because_the_deployment_has_no_build_step():
+    """web/dist is a build output that is committed on purpose.
+
+    The platform runs Python functions and has no Node build step, so without the
+    built client in the bundle a deployed Studio has an API and no page. That is
+    why web/dist is admitted by .gitignore, and why the function that serves it
+    must keep it.
+    """
+    ignored = set(_lines(".gitignore"))
+    assert "web/dist/" not in ignored, (
+        "web/dist is the deployment's client; ignoring it means no page"
+    )
+    assert "web/node_modules/" in ignored, "node_modules is never committed"
+
+
+def test_a_local_env_file_is_never_published():
+    """The template is published; a real .env is not.
+
+    Vercel serves the project directory as-is, so an .env sitting on the machine
+    that ran `vercel build` would be downloadable from the deployment's URL. The
+    template is a list of variables with placeholders only, and three documents
+    tell the reader to copy it, so it stays.
+    """
+    ignored = set(_lines(".vercelignore"))
+    assert ".env*" in ignored, "a local .env would be published at the deployment's URL"
+    assert "!.env.example" in ignored, "the template should still be published"
+
+    gitignored = set(_lines(".gitignore"))
+    assert ".env*" in gitignored, "a local .env must never be committed"
+    assert "!.env.example" in gitignored, (
+        "docs/SETUP.md tells the reader to copy .env.example, so it must be tracked"
+    )
+
+
+def test_the_runtime_state_is_never_published():
+    """var/ holds the encryption key, the auth secret and the database.
+
+    This is the worst of the three ways a file can leak, because it is not one
+    file but a directory of them. A build on a machine that had run Studio
+    locally publishes:
+
+        var/studio/.studio-encryption-key   opens every sealed provider key
+        var/studio/.studio-auth-secret      signs sessions and CSRF tokens
+        var/studio/studio.db                 every user, email and password hash
+
+    Vercel serves the project directory as-is at the domain root, so
+    /var/studio/.studio-encryption-key would be a public URL. Both layers must
+    exclude it: the static layer (.vercelignore) and every function bundle
+    (excludeFiles).
+    """
+    static = set(_lines(".vercelignore"))
+    assert "var/" in static, (
+        "var/ holds the encryption key and the database; it must not be published"
+    )
+    assert ".studio_env.sh" in static, "the generated keys in plaintext must not be published"
+    assert "prompt-studio.env" in static, "the env file naming the database must not be published"
+
+    functions = json.loads(_read("vercel.json"))["functions"]
+    for pattern, options in functions.items():
+        excluded = options.get("excludeFiles", "")
+        assert "var/**" in excluded, (
+            f"{pattern} ships var/ in its bundle, which holds the encryption key"
+        )
+
+
+def test_every_function_excludes_the_same_credential_paths():
+    """A new function must not be able to forget the guard.
+
+    Two layers ship a file to a deployment and they are configured separately:
+    the static layer (.vercelignore) and each function's bundle (excludeFiles).
+    A credential excluded from one and not the other still ships, so every
+    function carries the same set of credential and runtime-state patterns.
+    """
+    required = (
+        "var/**",
+        ".env*",
+        ".studio_env.sh",
+        "prompt-studio.env",
+        "web/node_modules/**",
+    )
+    functions = json.loads(_read("vercel.json"))["functions"]
+    for pattern, options in functions.items():
+        excluded = options.get("excludeFiles", "")
+        for need in required:
+            assert need in excluded, f"{pattern} does not exclude {need}"
+
+
+def test_the_deployed_functions_have_their_dependencies():
+    """The platform prefers uv.lock over requirements.txt when both exist.
+
+    requirements.txt is empty on purpose -- it is what stops Vercel detecting a
+    framework preset. But that meant the built function bundle shipped pip and
+    nothing else: studio/crypto.py raises EncryptionUnavailable when a
+    credential is stored, and studio/db.py raises MigrationError when
+    STUDIO_DATABASE_URL points at Postgres. Both packages are declared in
+    pyproject.toml instead, which is what uv.lock is built from.
+
+    That makes pyproject.toml and uv.lock the deployment's dependency list, so
+    they have to be both tracked and uploaded. Excluding them from the upload
+    would bring the same failure back, silently.
+    """
+    pyproject = _read("pyproject.toml")
+    for package in ("cryptography", "psycopg", "psycopg-pool"):
+        assert package in pyproject, f"{package} is not declared in pyproject.toml"
+
+    lock = _read("uv.lock")
+    for package in ("cryptography", "psycopg", "psycopg-pool"):
+        assert package in lock, f"{package} is not in uv.lock, so it would not be bundled"
+
+    # The lock must not be excluded from the upload, or nothing is installed.
+    uploaded = set(_lines(".vercelignore"))
+    assert "pyproject.toml" not in uploaded, (
+        "the platform reads pyproject.toml and uv.lock to install dependencies"
+    )
+    assert "uv.lock" not in uploaded, (
+        "the platform reads uv.lock to install dependencies"
+    )
+
+    # And they must be tracked, or the deployment has no dependency list.
+    tracked = set(_lines(".gitignore"))
+    assert "pyproject.toml" not in tracked, "the dependency list must be committed"
+    assert "uv.lock" not in tracked, "the dependency lock must be committed"

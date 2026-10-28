@@ -191,3 +191,42 @@ class TestAPollAdvancesTheJob:
             assert status == 200
             assert (body.get("job") or {}).get("status") == "completed"
         assert app.db.count("generation_outputs") == before, "a finished job was re-driven"
+
+
+class TestThePollAdvancesItsOwnJob:
+    """A poll must move the job it names, not whichever job is oldest.
+
+    This shipped broken. `advance_inline` called `claim_next`, which takes the
+    oldest due job in the whole queue -- so with three jobs queued, polling B
+    advanced A and B never moved. Measured: three jobs, three polls, B and C still
+    `queued`. The symptom looks like "polling does not work" and the cause is one
+    word in a method name.
+    """
+
+    def test_polling_the_newest_of_several_jobs_moves_that_one(self, host):
+        app, call, connection = host
+        ids = [_queue(call, connection) for _ in range(3)]
+        newest = ids[-1]
+
+        status, body = call("GET", "/api/jobs/%s" % newest)
+        assert status == 200
+        row = app.db.query_dict(
+            "SELECT status FROM generation_jobs WHERE id = ?", (newest,))
+        assert row["status"] in ("submitting", "processing", "completed"), (
+            "polling the newest job left it at %r while %d older jobs were queued"
+            % (row["status"], len(ids) - 1)
+        )
+
+    def test_a_poll_does_not_advance_a_different_job(self, host):
+        """The order matters: the untouched jobs must stay untouched."""
+        app, call, connection = host
+        ids = [_queue(call, connection) for _ in range(3)]
+        newest, older = ids[-1], ids[0]
+
+        before = app.db.query_dict(
+            "SELECT status FROM generation_jobs WHERE id = ?", (older,))["status"]
+        call("GET", "/api/jobs/%s" % newest)
+        after = app.db.query_dict(
+            "SELECT status FROM generation_jobs WHERE id = ?", (older,))["status"]
+        assert before == after, (
+            "polling one job advanced another: %r -> %r" % (before, after))

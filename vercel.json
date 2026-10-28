@@ -7,25 +7,29 @@
     "api/compile.py": {
       "memory": 512,
       "maxDuration": 60,
-      "excludeFiles": "{tests/**,scripts/**,promptlayer/vendor/**,web/node_modules/**,web/dist/**,studio/**,docs/**,**/__pycache__/**,**/test_*.py,requirements-dev.txt,dev.py}"
+      "excludeFiles": "{**/__pycache__/**,**/test_*.py,.env*,.pytest_cache/**,.studio_env.sh,dev.py,docs/**,prompt-studio.env,promptlayer/vendor/**,requirements-dev.txt,scripts/**,studio/**,tests/**,var/**,web/dist/**,web/node_modules/**}"
     },
     "api/studio_cron.py": {
       "memory": 1024,
       "maxDuration": 60,
-      "excludeFiles": "{tests/**,scripts/**,promptlayer/vendor/**,promptlayer/**,promptlayer/*.py,web/node_modules/**,docs/**,**/__pycache__/**,**/test_*.py,requirements-dev.txt,dev.py}"
+      "excludeFiles": "{**/__pycache__/**,**/test_*.py,.env*,.pytest_cache/**,.studio_env.sh,dev.py,docs/**,prompt-studio.env,promptlayer/**,promptlayer/*.py,promptlayer/vendor/**,requirements-dev.txt,scripts/**,tests/**,var/**,web/node_modules/**}"
     },
     "api/studio.py": {
       "memory": 1024,
       "maxDuration": 60,
-      "excludeFiles": "{tests/**,scripts/**,promptlayer/vendor/**,promptlayer/**,promptlayer/*.py,web/node_modules/**,web/dist/**,docs/**,**/__pycache__/**,**/test_*.py,requirements-dev.txt,dev.py}"
+      "excludeFiles": "{**/__pycache__/**,**/test_*.py,.env*,.pytest_cache/**,.studio_env.sh,dev.py,docs/**,prompt-studio.env,promptlayer/**,promptlayer/*.py,promptlayer/vendor/**,requirements-dev.txt,scripts/**,tests/**,var/**,web/node_modules/**}"
     },
     "api/*.py": {
       "memory": 512,
       "maxDuration": 15,
-      "excludeFiles": "{tests/**,scripts/**,promptlayer/vendor/**,web/node_modules/**,web/dist/**,studio/**,docs/**,**/__pycache__/**,**/test_*.py,requirements-dev.txt,dev.py}"
+      "excludeFiles": "{**/__pycache__/**,**/test_*.py,.env*,.pytest_cache/**,.studio_env.sh,dev.py,docs/**,prompt-studio.env,promptlayer/vendor/**,requirements-dev.txt,scripts/**,studio/**,tests/**,var/**,web/dist/**,web/node_modules/**}"
     }
   },
   "rewrites": [
+    {
+      "source": "/studio/(.*)",
+      "destination": "/api/studio"
+    },
     {
       "source": "/api/studio/(.*)",
       "destination": "/api/studio"

@@ -1,0 +1,30 @@
+[project]
+name = "app"
+version = "0.1.0"
+requires-python = "~=3.14.0"
+
+# The Prompt Layer functions are standard library only, and they must stay that
+# way: `requirements.txt` is empty so Vercel's Python builder does not detect a
+# framework preset and try to find one WSGI entrypoint.
+#
+# Studio needs three packages, and they are declared here rather than in
+# requirements.txt because the platform prefers uv.lock when both exist.
+# Without them in the lock, the built function bundle ships pip and nothing
+# else: studio/crypto.py raises EncryptionUnavailable when a credential is
+# stored, and studio/db.py raises MigrationError when STUDIO_DATABASE_URL points
+# at Postgres. The built output was inspected with
+# scripts/check_built_output.py and both were absent.
+#
+# psycopg is only imported when a Postgres URL is configured, so a deployment
+# that stays on SQLite does not need it at runtime -- but the import is
+# unconditional here so the deployment can switch to Postgres with an env var.
+#
+# pyproject.toml and uv.lock are tracked for that reason. They used to be
+# ignored as build artifacts, which was right when the lock declared nothing:
+# the platform read them and installed nothing, and the bundle shipped pip.
+# Now the lock is the deployment's dependency list.
+dependencies = [
+    "cryptography>=42",
+    "psycopg[binary]>=3.2,<4",
+    "psycopg-pool>=3.2",
+]

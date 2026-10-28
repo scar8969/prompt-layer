@@ -3001,6 +3001,106 @@ class JobRepository(_Repository):
             raise _conflict_for(error, "job") from error
         return self.get(scope, inserted["id"])
 
+    def claim_job(
+        self, job_id: str, worker_id: str, *, lease_seconds: int, now: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
+        """Claim **this** job, if it is claimable. ``None`` if it is not.
+
+        `claim_next` takes the oldest due job in the whole queue, which is right
+        for a worker draining a queue and wrong for a poll: a client asking about
+        job B would advance job A instead and leave B untouched. Measured before
+        this existed -- three jobs, three polls, and B and C never moved because A
+        was always the oldest.
+
+        Same exclusivity as `claim_next`: one conditional UPDATE that sets the
+        lease in the same statement that checks it, with `SKIP LOCKED` on Postgres
+        so a concurrent claim skips rather than blocks. A job that another worker
+        holds, that is not due yet, or that has already finished returns ``None``,
+        and the caller reads the row it already had.
+        """
+        record_id = _require_text(job_id, "job_id")
+        owner = _require_text(worker_id, "worker_id")
+        seconds = int(clamp(int(lease_seconds), 0, 86400))
+        if seconds <= 0:
+            raise ApiError(
+                VALIDATION_FAILED,
+                "A lease must last at least one second.",
+                field="lease_seconds",
+            )
+        stamp = _iso(now) or now_iso()
+        expires = _shift_iso(stamp, seconds)
+        lock_clause = (
+            " FOR UPDATE SKIP LOCKED"
+            if getattr(self._db, "is_postgres", False)
+            else ""
+        )
+        with self._db.write_tx() as tx:
+            cursor = tx.execute(
+                "UPDATE generation_jobs SET"
+                " status = CASE WHEN status IN ('queued', 'validating')"
+                "   THEN 'submitting' ELSE status END,"
+                " lease_owner = ?,"
+                " lease_expires_at = ?,"
+                " next_attempt_at = NULL,"
+                " attempt = CASE WHEN status IN ('queued', 'validating')"
+                "   THEN attempt + 1 ELSE attempt END,"
+                " started_at = COALESCE(started_at, ?),"
+                " status_message = CASE WHEN status IN ('queued', 'validating')"
+                "   THEN 'Submitting to the provider.' ELSE status_message END,"
+                " updated_at = ?"
+                " WHERE id = ?"
+                "   AND (lease_expires_at IS NULL OR lease_expires_at < ?)"
+                "   AND ("
+                "     ("
+                "       status IN ('queued', 'validating')"
+                "       AND (next_attempt_at IS NULL OR next_attempt_at <= ?)"
+                "     )"
+                "     OR ("
+                "       status IN ('processing', 'downloading')"
+                "       AND (next_attempt_at IS NULL OR next_attempt_at <= ?)"
+                "     )"
+                "   )"
+                "   AND id = ("
+                "     SELECT id FROM generation_jobs WHERE id = ?"
+                "     AND (lease_expires_at IS NULL OR lease_expires_at < ?)"
+                "     AND ("
+                "       (status IN ('queued', 'validating')"
+                "        AND (next_attempt_at IS NULL OR next_attempt_at <= ?))"
+                "       OR (status IN ('processing', 'downloading')"
+                "        AND (next_attempt_at IS NULL OR next_attempt_at <= ?))"
+                "     )"
+                + lock_clause +
+                "   )"
+                " RETURNING id, workspace_id, attempt, status",
+                (owner, expires, stamp, stamp, record_id,
+                 stamp, stamp, stamp,
+                 record_id, stamp, stamp, stamp),
+            )
+            claimed = tx.rows(cursor)
+            if not claimed:
+                return None
+            claimed_state = str(claimed[0]["status"] or "submitting")
+            tx.insert(
+                "job_events",
+                {
+                    "id": new_id(),
+                    "job_id": record_id,
+                    "status": claimed_state,
+                    "message": (
+                        "Claimed by a poll."
+                        if claimed_state == "submitting"
+                        else "Picked up again to check on the provider."
+                    ),
+                    "detail_json": json_dumps({"worker_id": owner, "lease_expires_at": expires}),
+                    "created_at": stamp,
+                },
+            )
+        row = self._db.query_dict(
+            "SELECT " + self._projection("generation_jobs", "j")
+            + " FROM generation_jobs j WHERE j.id = ?", (record_id,)
+        )
+        return _shape_row(self.TABLE, row) if row is not None else None
+
     def claim_next(
         self, worker_id: str, *, lease_seconds: int, now: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:

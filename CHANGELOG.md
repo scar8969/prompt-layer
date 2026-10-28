@@ -7,6 +7,71 @@ the change. The repo's two products are siblings: **Prompt Layer**
 
 ## Unreleased
 
+### The deployment build: three things a local test cannot see
+
+`vercel build --prod --yes` was run for the first time against the Studio
+function, and the built output was inspected rather than the configuration.
+Three problems surfaced that no test in the suite could have found, because
+locally the whole working tree is present:
+
+1. **`var/` was published.** It holds `studio.db`, `.studio-encryption-key`
+   and `.studio-auth-secret`. The encryption key opens every sealed provider
+   credential in the database, so this was a disclosure. Both layers now
+   exclude it: `.vercelignore` for the static layer, and `var/**` in every
+   function's `excludeFiles`.
+
+2. **The function bundle had no `psycopg` and no `cryptography`.** The platform
+   prefers `uv.lock` over `requirements.txt` when both exist, and the lock
+   declared no dependencies, so the bundle shipped `pip` and nothing else.
+   `studio/crypto.py` would have raised `EncryptionUnavailable` when a
+   credential was stored, and `studio/db.py` would have raised
+   `MigrationError` when `STUDIO_DATABASE_URL` pointed at Postgres. The three
+   packages are now declared in `pyproject.toml`, which is what the lock is
+   built from. `requirements.txt` stays empty on purpose -- it is what stops
+   the platform detecting a framework preset.
+
+   **This also changes what `pyproject.toml` and `uv.lock` are.** They were
+   ignored as build artifacts the CLI wrote, describing a project called
+   "app" with no dependencies. Now they are the deployment's dependency list,
+   so they are tracked in git and uploaded. `tests/test_deploy.py` pins that,
+   because excluding them from the upload would bring the same failure back,
+   silently.
+
+3. **`web/dist` was excluded from the function that serves it.** `api/studio.py`
+   serves the built client out of `web/dist`, and its `excludeFiles` listed
+   `web/dist/**`. Every page request would have 404'd on the deployment while
+   working perfectly on the machine that built it.
+
+Also fixed:
+
+- **`.env.example` was never committed.** The `.env*` rule swallowed it, but
+  `docs/SETUP.md`, `docs/DEPLOYMENT.md` and `docs/PLAN.md` all tell the reader
+  to copy it. It now ships: `!.env.example` in `.gitignore` and in
+  `.vercelignore`. The template holds placeholders only -- `replace-me-with-32-bytes-of-hex`
+  and localhost URLs -- and `scripts/check_env_template.py` checks that.
+- **`.vercelignore` did not exclude `.env*`.** Vercel serves the project
+  directory as-is, so a local `.env` on the machine that ran `vercel build`
+  would have been downloadable from the deployment's URL.
+
+Added:
+
+- **`scripts/check_built_output.py`** -- reads the built output and reports what
+  would actually be published: credential files, the runtime state directory,
+  and the third-party packages a function needs. This is the check that found
+  all three problems above.
+- **`scripts/build_client.py`** -- rebuilds `web/dist` with the deployment's
+  mount prefix and fails if the prefix is missing from the bundle or if the
+  client calls a path the backend does not route. `web/dist` is committed
+  because the deployment has no Node build step.
+- **`scripts/harden_exclude_files.py`** -- applies the same credential and
+  runtime-state patterns to every function's `excludeFiles`, so a new function
+  cannot forget one.
+- **`scripts/cleanup_scratch.py`** -- removes the session scratch files, and
+  refuses to delete anything git is tracking.
+
+`tests/test_deploy.py` gained five tests covering the three problems above,
+the shared exclude pattern, and the dependency declaration.
+
 ### Phases 2-5: Studio is deployable to Vercel
 
 Studio now runs as a request-scoped function plus a scheduled tick, instead of

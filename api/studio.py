@@ -39,6 +39,59 @@ if _REPO not in sys.path:
 # earlier raises UnboundLocalError. That is exactly what shipped once.
 from studio.serverless import application_path, handle  # noqa: E402
 
+#: Where the built React client lives in the deployed bundle. Served as-is for
+#: any path under /studio, so the page, its assets and its client-side routes all
+#: resolve without a Node build step on the platform.
+_STATIC_ROOT = os.path.join(_REPO, "web", "dist")
+
+#: The public mount for the page, distinct from the /api/studio API mount.
+_CLIENT_PREFIX = "/studio"
+
+
+def _client_path(raw_path: str, headers: dict) -> str:
+    """The path the built client should see, when the request is for the page.
+
+    `/studio/` -> `/` (the app's index), `/studio/assets/x.js` -> `/assets/x.js`.
+    Returns the empty string when the request is for the API, not the page.
+    """
+    original = (headers.get("x-vercel-proxy-path") or "").strip() or raw_path
+    if original.startswith("/api/"):
+        return ""
+    if original.startswith(_CLIENT_PREFIX):
+        remainder = original[len(_CLIENT_PREFIX):]
+        return remainder or "/"
+    return ""
+
+
+def _serve_static(path: str) -> tuple:
+    """A (status, body, content_type) triple for one static file, or a 404.
+
+    A missing path falls back to index.html so client-side routing works, which is
+    the same rule the socket server's `_static` uses. Traversal is refused: the
+    resolved path must stay under the dist root.
+    """
+    import mimetypes
+
+    root = os.path.abspath(_STATIC_ROOT)
+    relative = (path or "/").lstrip("/") or "index.html"
+    candidate = os.path.abspath(os.path.join(root, relative))
+    if candidate != root and not candidate.startswith(root + os.sep):
+        return 403, b"", "text/plain"
+    if os.path.isdir(candidate):
+        candidate = os.path.join(candidate, "index.html")
+    if not os.path.isfile(candidate):
+        if "." in os.path.basename(relative):
+            return 404, b"", "text/plain"
+        candidate = os.path.join(root, "index.html")
+    if not os.path.isfile(candidate):
+        return 404, b"", "text/plain"
+    with open(candidate, "rb") as handle:
+        payload = handle.read()
+    content_type = mimetypes.guess_type(candidate)[0] or "application/octet-stream"
+    if content_type.startswith("text/") or content_type in ("application/javascript", "application/json"):
+        content_type += "; charset=utf-8"
+    return 200, payload, content_type
+
 
 def _headers(headers) -> dict:
     lowered = {}
@@ -60,6 +113,14 @@ class handler(BaseHTTPRequestHandler):
         body = self.rfile.read(length) if length > 0 else b""
 
         headers = _headers(self.headers)
+
+        # A request for the page, not the API: serve the built client.
+        client_path = _client_path(self.path, headers)
+        if client_path and method in ("GET", "HEAD"):
+            status, payload, content_type = _serve_static(client_path)
+            self._write(status, payload, content_type, {"Cache-Control": "no-cache"}, method)
+            return
+
         app_path = application_path(self.path, headers)
         if headers.get("x-vercel-proxy-path") and app_path == self.path:
             # Platform rewrite: keep the query string, which the proxy path omits.

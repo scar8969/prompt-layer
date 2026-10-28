@@ -10,26 +10,35 @@ env/
 # Vercel: the linked project, and anything holding credentials.
 .vercel/
 .env*
+# ...except the template. Three documents (docs/SETUP.md, docs/DEPLOYMENT.md,
+# docs/PLAN.md) tell the reader to copy it, so a deployment that does not
+# carry it cannot be configured from the repository alone. It holds only
+# placeholders — "replace-me-with-32-bytes-of-hex" and localhost URLs.
+!.env.example
 
 # Written by the CLI during a local `vercel build`; the remote build writes its own.
 # Nothing here is part of the project — the functions are stdlib-only, which
 # requirements.txt says in as many words.
 .python-version
-pyproject.toml
-uv.lock
 
 # Studio runtime state. var/studio holds the SQLite database, uploaded objects,
 # and — when STUDIO_ENCRYPTION_KEY is unset — a generated key file. None of that
 # belongs in version control.
 var/
 web/node_modules/
-web/dist/
+# web/dist is a build output, and build outputs do not normally belong in a
+# repository. It is committed deliberately here: the Vercel deployment serves the
+# client from the Python function and has no Node build step, so without it a
+# deployed Studio has an API and no page. Rebuild with scripts/build_client.py,
+# which fails if the mount prefix is missing or a called path is not routed.
+!web/dist/
 
 # Local working copies and session artifacts. The committed `gen_studio_env.py`
 # / `run_studio.py` / `smoke_studio.py` / `repro_assets_list.py` are the real
 # entry points; the files below are what those scripts produce or what
 # interactive sessions leave behind.
 .studio_env.sh
+prompt-studio.env
 out.txt
 smoke_out.txt
 start_studio.bat
@@ -42,4 +51,9 @@ gitignore_diff.txt
 audit_studio.txt
 audit_tests.txt
 audit_web.txt
+*.out.txt
+vbuild.txt
+build_log.txt
+result.txt
+final.txt
 .vercel

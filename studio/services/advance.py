@@ -60,14 +60,28 @@ def should_advance(job: dict) -> bool:
 def advance_inline(app: Any, workspace_id: str, job_id: str, *, wait: bool = True) -> None:
     """Try to claim and drive one job, on a worker id scoped to this attempt.
 
-    Synchronous when *wait* is true, which is what the synchronous callers (the
-    probe scripts, and a deployment with no threads to spare) want. The route
-    passes ``wait=False`` so the response is not held up.
+    **Synchronous by default, and the route uses the synchronous path.** An
+    earlier version started a daemon thread and returned immediately; measured
+    locally, two of three polls left the job untouched because the thread had not
+    been scheduled before the response was written. On a serverless platform the
+    invocation may be frozen the moment the response goes out, so the thread is
+    racing the platform on top of racing the scheduler. A mechanism that works
+    "usually" is not a queue.
+
+    What is being moved here is one step, not a whole job: submit, or one poll of
+    an in-flight job. The provider call is already bounded by the adapter's own
+    timeouts, and a job that is not due yet returns immediately.
+
+    ``wait=False`` remains for callers that genuinely must not block, but nothing
+    in the request path uses it.
     """
     def run() -> None:
         try:
-            claimed = app.runner.repos.jobs.claim_next(
-                "poll-" + job_id[:8], lease_seconds=60
+            # Claim *this* job, not the oldest in the queue. `claim_next` would
+            # advance whichever job happened to be oldest, so a client polling job
+            # B could leave B untouched while moving A.
+            claimed = app.runner.repos.jobs.claim_job(
+                job_id, "poll-" + job_id[:8], lease_seconds=60
             )
             if claimed is None:
                 # Somebody else holds the lease, or the job is not due yet.

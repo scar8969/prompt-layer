@@ -51,15 +51,19 @@ def register_routes(router: Any, app: Any) -> None:
         this route while a job runs. `advance_inline` claims with SKIP LOCKED, so
         two polls arriving together cannot both drive the job.
 
-        The read is answered first and the drive happens on a short-lived thread,
-        so latency does not depend on the provider.
+        The drive is synchronous. A daemon thread was tried first and abandoned:
+        measured two polls in three left the job untouched because the thread had
+        not run before the response was written, and a serverless invocation can
+        be frozen the moment it writes one. One step of work -- a submit, or a
+        single poll -- is bounded by the adapter's own timeout, so blocking for it
+        is cheaper than a mechanism that works three times in four.
         """
         from ..services.advance import advance_inline, should_advance
 
         workspace_id = request.session.workspace_id
         job = app.repos.jobs.get(workspace_id, request.params["id"])
         if should_advance(job):
-            advance_inline(app, workspace_id, request.params["id"], wait=False)
+            advance_inline(app, workspace_id, request.params["id"])
         return Response.json({"job": shape_job(workspace_id, job)})
 
     def events(request: RequestContext) -> Response:
