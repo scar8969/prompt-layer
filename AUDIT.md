@@ -278,3 +278,123 @@ before push to `main`:
 The session artifacts (`audit_*.txt`, `git_*.txt`, `out.txt`,
 `smoke_out.txt`, `start_studio.bat`, `.studio_env.sh`) are local
 working copies and should be in `.gitignore`, not in any commit.
+
+---
+
+# Round 2 — audit of the committed tree (after `3fbc1a5`)
+
+Round 1 audited a working copy. Everything it reviewed has since been
+committed and 170 files / +48,312 lines landed on top of it — the whole of
+`studio/`, `web/`, and a deployment layer that did not exist when round 1
+was written (`api/studio.py`, `api/studio_cron.py`, `Dockerfile`,
+`docker-compose.yml`, `vercel.json`, `scripts/check_built_output.py`,
+`scripts/harden_exclude_files.py`, `scripts/probe_*`).
+
+This round re-verifies the load-bearing claims against the committed tree.
+
+## Numbers, as they actually run
+
+```
+python -m pytest -q  →  676 passed, 32 skipped in 97.88s   (Python 3.14.7)
+```
+
+Round 1 said "619 tests passing". The suite has grown; the number in
+`docs/` and in commit `841ac61` should be read as 676 passed / 32 skipped
+(32 skips are the Postgres-gated tests — see `test_claiming_postgres.py`,
+`test_db_backend.py`, which skip without `STUDIO_TEST_PG_DSN`).
+
+## Round 1 open items — status
+
+| Round 1 item | Status now |
+|---|---|
+| Session artifacts must be gitignored | **Closed.** `.gitignore` lists every one: `.studio_env.sh`, `out.txt`, `smoke_out.txt`, `start_studio.bat`, `git_*.txt`, `audit_*.txt`, `*.out.txt`, `vbuild.txt`. None is tracked (`git ls-files` confirms only `.env.example` matches an env pattern). |
+| `presets_data.py` (1904 lines) unaudited | **Closed.** Zero `http(s)://` URLs, zero credential-shaped strings (`sk-`, `api_key`, `password`) in the file. It is data plus lookup helpers, as documented. |
+| Lease expiry under a dead worker has no focused test | **Closed.** `tests/test_claiming_postgres.py:159 test_an_expired_lease_makes_the_job_claimable_again`, plus `test_a_claimed_job_records_the_owner_and_a_lease` and `tests/test_tick.py`. |
+| `Dockerfile` never built | **Still open.** No `docker` binary on this machine, so it cannot be built here. Reviewed by reading: no secret baked in (`STUDIO_ENCRYPTION_KEY`/`STUDIO_AUTH_SECRET` come from the environment), non-root (uid 10001), `/data` is a volume holding SQLite + objects + generated key files, healthcheck probes `/api/system/status` rather than the socket. `.dockerignore` excludes `var/`, `.env*`, `.git`, `tests/`, `web/src` and keeps `web/dist`. Unverified until one real `docker build && docker run`. |
+
+## New finding — the registered-secret guarantee is not implemented
+
+Round 1 flagged this as "worth verifying": *`docs/PLAN.md` says the only
+always-correct pattern is the registered-secret dictionary, but
+`redact.py` depends on pattern matching; every path holding a decrypted
+secret must call `redact.register` before logging.*
+
+Verified against the committed tree, and the guarantee **does not hold**:
+
+- `studio/redact.py:91 register_secret()` has **zero production call
+  sites**. The only caller in the repository is
+  `tests/test_security.py:1148`.
+- `studio/services/connections.py:296 open_credential()` returns the
+  plaintext credential to the caller for one outbound request and never
+  registers it. Its docstring says "Never logged, never returned" — true
+  of its own frame, but the returned string is then handed to an adapter,
+  and provider error payloads are deliberately attached to
+  `provider_error` details (that is the documented behaviour in
+  `docs/LIMITATIONS.md`).
+
+So in production the redactor's real defense is its 7 pattern rules —
+known provider key shapes, labelled `Authorization:`/`api_key=`
+assignments, signed-URL query parameters — not the registered-secret
+dictionary. A provider that echoes a bare credential in a JSON field
+(`{"key": "<value>"}`) for a vendor whose key shape is not in
+`SENSITIVE_KEY_HINTS` would reach a log line unredacted.
+
+Fix is one line in `open_credential`, immediately after `box.open(...)`:
+
+```python
+from .. import redact
+redact.register_secret(text)      # bounded, deduplicated, LRU-evicted
+```
+
+and an explicit `redact.forget_all_secrets()` at the end of the request /
+job step that used it, so the registry does not accumulate credentials
+across requests in a long-lived process. `register_secret` already bounds
+itself at `_REGISTERED_MAX` with FIFO eviction, so the blast radius is
+small — but a request-scoped clear is the honest version.
+
+Severity: medium. Not a live leak (no path was found that logs a bare
+credential today), but the documented invariant and the code disagree,
+and the next adapter written against that docstring would inherit the gap.
+
+## Deployment surface — verified
+
+- `vercel.json` excludes `var/**`, `.env*`, `.studio_env.sh`,
+  `prompt-studio.env`, `tests/**`, `scripts/**` from **every** function
+  bundle, including `api/studio.py` and `api/studio_cron.py`. This is the
+  fix for commit `83c1624` ("the built output published the encryption
+  key, the database, and no dependencies") and it holds for all four
+  function entries.
+- `web/dist` is committed on purpose (3 files: `index.html`, one JS, one
+  CSS bundle) so a Vercel deployment without a Node build has a page. No
+  key material in it: no 64-hex strings, no `sk-…` strings; the only
+  matches for `secret` are UI copy.
+- `var/` is untracked (`git ls-files | grep '^var/'` = 0) and holds the
+  local SQLite database plus object store for development only.
+- `api/studio.py` (220 lines) is a thin adapter: strips the mount prefix,
+  serves `web/dist` for `/studio/*`, refuses traversal by resolved-path
+  prefix check, and answers a cold-start failure with the standard error
+  envelope plus `missing_for_startup()` rather than an `OperationalError`
+  string. No credential handling in the function itself — correct place
+  for that boundary.
+
+## Still not read end-to-end (unchanged from round 1)
+
+`studio/repository.py` (4,836 lines), `studio/services/runner.py`
+(697), `studio/adapters/declarative.py` (1,763), `web/src/features/*`
+screens, and migrations `0003`–`0006`. `studio/serverless.py`,
+`studio/tick.py` and `api/studio_cron.py` were read for their route/
+schedule wiring only.
+
+## Verdict for the push
+
+Unchanged in shape from round 1, with one addition:
+
+- **Safe**: the tests (676 passing), the docs, `.gitignore`,
+  `vercel.json`/`api/*` deploy wiring, `web/dist`.
+- **Needs a second pair of eyes**: `studio/` deep modules
+  (`repository.py`, `runner.py`, `declarative.py`), and now the
+  `open_credential` → `register_secret` gap above, which should be fixed
+  before any adapter that logs provider payloads is added.
+- **Unverified by execution**: the `Dockerfile`, the S3 backend, and any
+  live-provider path — all three are honest about it in
+  `docs/LIMITATIONS.md`.
