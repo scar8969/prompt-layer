@@ -596,17 +596,6 @@ export interface Character {
 
 /* -------------------------------------------------------------- responses */
 
-export interface Enveloped<T extends string, V> {
-  // Purely documentary; the client reads raw JSON and narrows at the endpoint layer.
-  key: T;
-  value: V;
-}
-
-export interface Paginated<T> {
-  items: T[];
-  next_cursor: string | null;
-}
-
 export interface AssetListResponse {
   assets: Asset[];
   next_cursor: string | null;

@@ -1,6 +1,5 @@
-import { useId, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Icon } from './Icon.tsx';
-import { Badge } from './Badge.tsx';
 
 export function Section({
   title,
@@ -24,22 +23,6 @@ export function Section({
       </div>
       <div className="section__body">{children}</div>
     </section>
-  );
-}
-
-export function Card({
-  children,
-  flush,
-  sunken,
-}: {
-  children: ReactNode;
-  flush?: boolean;
-  sunken?: boolean;
-}) {
-  return (
-    <div className={['card', flush ? 'card--flush' : '', sunken ? 'card--sunken' : ''].filter(Boolean).join(' ')}>
-      {children}
-    </div>
   );
 }
 
@@ -130,29 +113,3 @@ export function FilterBar({ children, label }: { children: ReactNode; label: str
   );
 }
 
-export function MockNote({ children }: { children: ReactNode }) {
-  return (
-    <div className="panel panel--mock">
-      <p className="panel__title">
-        <Badge tone="mock">Local development placeholder</Badge>
-      </p>
-      {children}
-    </div>
-  );
-}
-
-export function Disclosure({ summary, children, open: initialOpen }: { summary: string; children: ReactNode; open?: boolean }) {
-  const id = useId();
-  return (
-    <details className="card" open={initialOpen}>
-      <summary className="card__head" style={{ cursor: 'pointer' }}>
-        <span className="card__title">{summary}</span>
-        <span className="topbar__spacer" />
-        <Icon name="chevronDown" size={14} />
-      </summary>
-      <div className="card__body" id={id}>
-        {children}
-      </div>
-    </details>
-  );
-}

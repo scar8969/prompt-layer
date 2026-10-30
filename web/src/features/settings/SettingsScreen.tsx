@@ -14,7 +14,7 @@ import { useSettings } from '../../state/settings.tsx';
 import { clearPreferences, SECRET_PATTERN } from '../../state/storage.ts';
 import { invalidate } from '../../state/query.ts';
 import { useToasts } from '../../state/toasts.tsx';
-import { formatBytes, formatDateTime, formatRelative } from '../../lib/util.ts';
+import { formatBytes, formatDateTime } from '../../lib/util.ts';
 
 /**
  * Settings. Profile, workspace, appearance, the local default model, usage and

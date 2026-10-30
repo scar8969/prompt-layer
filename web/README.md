@@ -35,10 +35,16 @@ src/
   styles/      design tokens and every rule in the app
 ```
 
-Eleven surfaces, all reachable from the rail: Home/Discover, Image Studio,
-Video Studio, Projects, Asset Library, Models, API Connections, Presets &
-Workflows, Character Library, History & Jobs, Settings. Detail screens exist for
-jobs, projects, models and connections.
+Twelve surfaces, all reachable from the rail: Home/Discover, Prompt Lab, Image
+Studio, Video Studio, Projects, Asset Library, Presets & Workflows, Character
+Library, History & Jobs, Models, API Connections, Settings. Detail screens exist
+for jobs, projects, models and connections.
+
+Prompt Lab is the layer dataset: pick a model the repository has facts for, paste a
+prompt, and read the payload that reaches the provider, every layer that touches it
+and the parameter that turns each one off. The same dataset fills the prompt-layers
+section of the model inspector and the documented-model picker in the connection
+wizard, so a model is added by name rather than by remembering an endpoint id.
 
 ## Decisions worth knowing
 
@@ -56,9 +62,10 @@ it, so a local development placeholder cannot be shown bare.
 **Capability gating is fail-closed.** A mode, aspect ratio, duration, resolution,
 camera move, seed, negative prompt, mask or audio switch is enabled only when the
 model's capability profile declares it. Otherwise the control is disabled (or
-hidden) with a sentence saying why. `state/models.ts → modeSupport()` reads the
-resolved capability response first and the model's declared modes second; it
-never guesses.
+hidden) with a sentence saying why. The vocabulary a form offers comes from the
+backend too: `/api/models/{id}/capabilities` for the controls, `/api/prompt/modes`
+for the generation modes, so a name the service would refuse cannot reach a
+request from here.
 
 **Cost and billing.** `lib/util.ts → formatCost()` appends "— estimate" whenever
 `cost_estimate.is_estimate` is true, and screens additionally state that a
@@ -66,10 +73,17 @@ non-billable request is billed by your own provider account. The platform's
 billing mode is rendered from `system.status.billing` through
 `billingSentence()`; "billing unconfigured" is shown as the backend reports it.
 
-**Progress.** `controls → ProgressBar` and `Media → JobStateBadge` draw a
-percentage only when `progress_is_estimate === false` **and** a numeric
-`progress` exists. Otherwise they print the job state and say that the provider
-reported no measured progress.
+**Progress.** `controls → ProgressBar` draws a percentage only when
+`progress_is_estimate === false` **and** a numeric `progress` exists. The payload
+carries neither today, so a running job shows its state and says the provider
+reported no measured progress — which is what is true.
+
+**Two vocabularies, one translation.** The server stores a job's `status`
+(`queued` … `completed`); the screens speak `state` (`succeeded`). The mapping is
+in `api/endpoints.ts` and `tests/test_job_vocabulary.py` fails if the database
+grows a status it does not translate. Readers translate every wire name to the
+view model in the same file, and `tests/test_client_contract.py` fails when a
+reader reads a field the payload does not carry.
 
 **Camera moves.** A move with `is_native: false` is labelled "prompt wording
 only" both in the option label and in an inline note; it is described as wording

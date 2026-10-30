@@ -16,16 +16,6 @@ export function LoadingState({ label = 'Loading…' }: { label?: string }) {
   );
 }
 
-export function SkeletonRows({ rows = 3 }: { rows?: number }) {
-  return (
-    <div className="stack" aria-hidden="true">
-      {Array.from({ length: rows }, (_, index) => (
-        <div key={index} className="skeleton skeleton--line" />
-      ))}
-    </div>
-  );
-}
-
 export function EmptyState({
   title,
   body,

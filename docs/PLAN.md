@@ -47,8 +47,10 @@ that choice.
 4. HTTP -- done. 74 routes across eight groups, sessions with CSRF, and the
    composition root in `studio/app.py`. Served by `python -m studio.app` rather
    than by a Vercel function (see the stack decision above).
-5. Client -- done. React 19 application with eleven navigation surfaces, building
-   to `web/dist`, verified by `tsc --noEmit` and `vite build`.
+5. Client -- done. React 19 application with twelve navigation surfaces --
+   including Prompt Lab, which serves the layer dataset from inside the same
+   application -- building to `web/dist`, verified by `tsc --noEmit` and
+   `vite build`.
 6. Reliability -- done. 46 HTTP tests in `tests/test_studio.py`, 324 unit and
    repository tests beside it, 617 in the whole suite, documentation,
    `.env.example`, a Dockerfile and a compose file.

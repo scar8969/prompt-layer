@@ -56,11 +56,3 @@ export function usePromptCatalog(modality?: 'image' | 'video'): QueryState<Promp
   );
 }
 
-/** The documented endpoint that matches a registered model's key, if any. */
-export function findCatalogEntry(
-  catalog: PromptCatalog | undefined,
-  modelKey: string,
-): PromptCatalogEntry | null {
-  if (!catalog) return null;
-  return catalog.endpoints.find((entry) => entry.endpoint === modelKey) ?? null;
-}

@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
-import { connections, models as modelApi } from '../api/endpoints.ts';
-import type { Connection, Model, ModelCapabilitiesResponse, ModelParametersResponse, Modality } from '../api/types.ts';
+import { models as modelApi } from '../api/endpoints.ts';
+import type { Model, ModelCapabilitiesResponse, ModelParametersResponse, Modality } from '../api/types.ts';
 import { useQuery, type QueryState } from './query.ts';
 
 /**
@@ -27,10 +27,6 @@ export function modelFilterKey(filters: ModelFilters): string {
 export function useModels(filters: ModelFilters = {}): QueryState<Model[]> {
   const key = modelFilterKey(filters);
   return useQuery<Model[]>(key, () => modelApi.list(filters), { staleMs: 10_000 });
-}
-
-export function useConnections(): QueryState<Connection[]> {
-  return useQuery<Connection[]>('connections', () => connections.list(), { staleMs: 10_000 });
 }
 
 export function useModelCapabilities(modelId: string | null): QueryState<ModelCapabilitiesResponse> {
@@ -74,30 +70,6 @@ export function groupByProvider(models: Model[]): ModelOptionGroup[] {
   return [...groups.entries()]
     .map(([label, options]) => ({ label, options }))
     .sort((a, b) => a.label.localeCompare(b.label));
-}
-
-/**
- * Mode support, read straight from the model's declared modes. A mode that the
- * model did not declare is "unsupported", never "probably fine".
- */
-export function modeSupport(model: Model | null, capabilities: ModelCapabilitiesResponse | null) {
-  const declared = new Set<string>([
-    ...(model?.modes ?? []),
-    ...(model?.capabilities.modes ?? []),
-  ]);
-  const listed = capabilities?.modes ?? [];
-  return {
-    isSupported: (mode: string): boolean => {
-      if (listed.length) {
-        const entry = listed.find((item) => item.key === mode);
-        if (entry) return entry.supported;
-      }
-      return declared.has(mode);
-    },
-    reason: (mode: string): string =>
-      `The model profile for this model does not declare the "${mode}" mode, so the control is disabled.`,
-    labels: new Map(listed.map((item) => [item.key, item.label])),
-  };
 }
 
 /** A compact, honest one-line summary of what a model can do. */

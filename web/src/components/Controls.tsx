@@ -283,17 +283,6 @@ export function ProgressBar({
 
 /* ---------------------------------------------------------------- tip */
 
-export function Tooltip({ text, children }: { text: string; children: ReactNode }) {
-  return (
-    <span className="tip" tabIndex={0} aria-label={text}>
-      {children}
-      <span className="tip__bubble" role="tooltip">
-        {text}
-      </span>
-    </span>
-  );
-}
-
 /* ------------------------------------------------------------ tag list */
 
 export function TagInput({

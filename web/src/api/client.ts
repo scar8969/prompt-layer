@@ -1,5 +1,5 @@
 import type { ApiErrorBody, ApiErrorCode } from './types.ts';
-import { arr, isRecord, str } from '../lib/util.ts';
+import { isRecord, str } from '../lib/util.ts';
 
 /**
  * The client's only error type. It carries the backend's error object verbatim —
@@ -56,10 +56,6 @@ export function setCsrfToken(token: string | null): void {
   csrfToken = token && token.length > 0 ? token : null;
 }
 
-export function getCsrfToken(): string | null {
-  return csrfToken;
-}
-
 /**
  * The contract returns the CSRF token from login/register only, so a reload
  * loses it. Double-submit backends usually also publish it in a readable
@@ -105,13 +101,6 @@ export interface ApiRequestEvent {
 }
 
 const listeners = new Set<(event: ApiRequestEvent) => void>();
-
-export function subscribeToRequests(listener: (event: ApiRequestEvent) => void): () => void {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
-}
 
 /**
  * Where the Studio API lives, as a prefix in front of every route path.
@@ -288,17 +277,4 @@ export function envelope(payload: unknown, key: string): unknown {
     hint: 'The client and the studio backend disagree about the response envelope.',
     details: { received_keys: isRecord(payload) ? Object.keys(payload) : [] },
   });
-}
-
-export function envelopeList<K extends string, T>(
-  payload: unknown,
-  key: K,
-  map: (item: unknown) => T,
-): { items: T[]; nextCursor: string | null } {
-  const value = envelope(payload, key);
-  const source = arr(value);
-  return {
-    items: source.map(map),
-    nextCursor: str(isRecord(payload) ? payload.next_cursor : null),
-  };
 }

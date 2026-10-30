@@ -32,10 +32,6 @@ export class Ids {
   }
 }
 
-export function clamp(value: number, min: number, max: number): number {
-  return value < min ? min : value > max ? max : value;
-}
-
 /** Byte-size formatting for asset metadata; never used for cost or progress. */
 export function formatBytes(bytes: number | null | undefined): string {
   if (bytes === null || bytes === undefined || !Number.isFinite(bytes)) return '—';
@@ -139,27 +135,6 @@ export function titleCase(value: string): string {
     .replace(/\s+/g, ' ')
     .trim()
     .replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
-export function unique<T>(items: T[]): T[] {
-  return Array.from(new Set(items));
-}
-
-export function omitEmpty<T extends Record<string, unknown>>(input: T): Partial<T> {
-  const output: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(input)) {
-    if (value === undefined || value === null || value === '') continue;
-    output[key] = value;
-  }
-  return output as Partial<T>;
-}
-
-/**
- * MIME/size validation for uploads happens on the backend; this client-side check
- * exists only to avoid a pointless round trip and never replaces the backend rule.
- */
-export function looksLikeImage(contentType: string): boolean {
-  return contentType.startsWith('image/');
 }
 
 export function looksLikeVideo(contentType: string): boolean {

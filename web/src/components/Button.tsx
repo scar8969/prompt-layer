@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, ReactNode } from 'react';
+import type { ButtonHTMLAttributes } from 'react';
 
 type Variant = 'primary' | 'ghost' | 'danger' | 'plain';
 
@@ -64,25 +64,3 @@ export function IconButton({
   );
 }
 
-/**
- * A button that is disabled because its precondition is unmet still has to say
- * why. This pairs the control with that sentence.
- */
-export function ActionWithReason({
-  reason,
-  children,
-}: {
-  reason: string | null;
-  children: ReactNode;
-}) {
-  return (
-    <span className="row row--tight">
-      {children}
-      {reason ? (
-        <span className="dim" style={{ fontSize: 'var(--fs-xs)' }}>
-          {reason}
-        </span>
-      ) : null}
-    </span>
-  );
-}

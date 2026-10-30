@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type DragEvent } from 'react';
 import type { Asset, Output } from '../api/types.ts';
 import { formatBytes, formatSeconds, looksLikeVideo, truncate } from '../lib/util.ts';
-import { Badge, MockBadge } from './Badge.tsx';
+import { MockBadge } from './Badge.tsx';
 import { Icon } from './Icon.tsx';
 
 /**
@@ -248,24 +248,6 @@ export function MediaGrid({
         </figure>
       ))}
     </div>
-  );
-}
-
-export function JobStateBadge({ state, progress, progressIsEstimate }: { state: string; progress: number | null; progressIsEstimate: boolean | null }) {
-  const tone =
-    state === 'succeeded'
-      ? 'ok'
-      : state === 'failed' || state === 'cancelled'
-        ? 'danger'
-        : state === 'running' || state === 'queued'
-          ? 'accent'
-          : 'plain';
-  const showProgress = progressIsEstimate === false && typeof progress === 'number';
-  return (
-    <span className="row row--tight">
-      <Badge tone={tone}>{state}</Badge>
-      {showProgress ? <span className="numeric muted">{Math.round(progress)}%</span> : null}
-    </span>
   );
 }
 
