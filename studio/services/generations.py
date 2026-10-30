@@ -288,6 +288,15 @@ class GenerationService:
                 entry["asset_id"] = asset_id
                 entry["url"] = self._asset_url(asset)
                 entry["content_type"] = asset.get("mime_type")
+                # `kind` is what decides whether a mode that needs a source video
+                # has one. It was never set here, so every such mode (extend,
+                # video_to_video, restyle, motion_transfer) was refused with "this
+                # mode needs a source video" -- about a reference that was attached.
+                entry["kind"] = str(asset.get("kind") or "") or (
+                    "video"
+                    if str(asset.get("mime_type") or "").startswith("video/")
+                    else "image"
+                )
             else:
                 entry["url"] = url
             out.append(entry)
@@ -443,6 +452,29 @@ class GenerationService:
         job["relation"] = "variation"
         return result
 
+    def _derived_references(
+        self, parent: Mapping[str, Any], role: str
+    ) -> List[Dict[str, Any]]:
+        """The parent's own references, plus the output it produced.
+
+        An edit, an extension or a transform is derived *from an output*. These
+        routes used to copy only the parent's input references, so a request whose
+        mode needs a source image or video was refused with "this mode needs a
+        source video" — about a job that had just produced one. The output asset is
+        appended with the role the derived request expects, and references are
+        de-duplicated by asset id so a parent that already carried its own output
+        is not doubled.
+        """
+        references = list(json_loads(parent.get("references_json") or "[]", []))
+        seen = {str(item.get("asset_id") or "") for item in references if isinstance(item, Mapping)}
+        for output in parent.get("outputs") or ():
+            asset_id = str(output.get("asset_id") or "")
+            if not asset_id or asset_id in seen:
+                continue
+            references.append({"asset_id": asset_id, "role": role})
+            break
+        return references
+
     def edit(self, session: Any, job_id: str, payload: Mapping[str, Any]) -> Dict[str, Any]:
         """Queue an inpaint or outpaint derived from an existing output.
 
@@ -471,7 +503,7 @@ class GenerationService:
             "negative_prompt": parent.get("negative_prompt") or "",
             "parameters": dict(parameters, **(payload.get("parameters") or {})),
             "mask_asset_id": payload.get("mask_asset_id"),
-            "references": json_loads(parent.get("references_json") or "[]", []),
+            "references": self._derived_references(parent, "first_frame"),
             "count": 1,
             "project_id": parent.get("project_id"),
         }
@@ -509,7 +541,7 @@ class GenerationService:
                 json_loads(parent.get("parameters_json") or "{}", {}),
                 **(payload.get("parameters") or {}),
             ),
-            "references": json_loads(parent.get("references_json") or "[]", []),
+            "references": self._derived_references(parent, "reference_video"),
             "count": 1,
             "project_id": parent.get("project_id"),
             "duration_seconds": seconds,
@@ -535,7 +567,7 @@ class GenerationService:
                 json_loads(parent.get("parameters_json") or "{}", {}),
                 **(payload.get("parameters") or {}),
             ),
-            "references": json_loads(parent.get("references_json") or "[]", []),
+            "references": self._derived_references(parent, "reference_video"),
             "count": 1,
             "project_id": parent.get("project_id"),
         }

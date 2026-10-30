@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { jobs as jobsApi, generations } from '../../api/endpoints.ts';
-import type { Job, JobEvent } from '../../api/types.ts';
+import { assets as assetsApi, jobs as jobsApi, generations } from '../../api/endpoints.ts';
+import type { Asset, Job, JobEvent } from '../../api/types.ts';
 import { Badge, MockBadge } from '../../components/Badge.tsx';
 import { Button } from '../../components/Button.tsx';
+import { Select, TextInput } from '../../components/Field.tsx';
 import { KeyValueList, Section, CodeBlock } from '../../components/Data.tsx';
 import { ProgressBar } from '../../components/Controls.tsx';
 import { ErrorNotice } from '../../components/ErrorNotice.tsx';
@@ -13,7 +14,7 @@ import { Link, useRouter } from '../../app/router.tsx';
 import { useToasts } from '../../state/toasts.tsx';
 import { isTerminalState, useJobWatch } from '../../state/jobs.ts';
 import { formatCost, formatDateTime, formatDurationMs, formatSeconds, titleCase } from '../../lib/util.ts';
-import { invalidate } from '../../state/query.ts';
+import { invalidate, useQuery } from '../../state/query.ts';
 
 /**
  * One job in full: its state, its real timings, its cost estimate, the exact
@@ -27,7 +28,20 @@ export function JobDetailScreen({ jobId }: { jobId: string }) {
   const [events, setEvents] = useState<JobEvent[] | null>(null);
   const [eventError, setEventError] = useState<unknown>(null);
   const [actionError, setActionError] = useState<unknown>(null);
-  const [pending, setPending] = useState<'cancel' | 'retry' | 'variations' | null>(null);
+  const [pending, setPending] = useState<
+    'cancel' | 'retry' | 'variations' | 'edit' | 'extend' | 'transform' | null
+  >(null);
+  // Derived requests: an edit works on one of this job's outputs, an extension
+  // continues a clip, a transform restyles it. Each is a new job with its own cost.
+  // Outpaint is the default because inpainting needs a mask, and offering a mode
+  // that cannot be submitted until another control is filled is a dead end.
+  const [editMode, setEditMode] = useState<'inpaint' | 'outpaint'>('outpaint');
+  const [maskAssetId, setMaskAssetId] = useState('');
+  const [editPrompt, setEditPrompt] = useState('');
+  const [extendSeconds, setExtendSeconds] = useState(5);
+  const [extendPrompt, setExtendPrompt] = useState('');
+  const [transformMode, setTransformMode] = useState('restyle');
+  const [transformPrompt, setTransformPrompt] = useState('');
   const [variationCount, setVariationCount] = useState(2);
   const [selectedOutput, setSelectedOutput] = useState(0);
 
@@ -50,6 +64,17 @@ export function JobDetailScreen({ jobId }: { jobId: string }) {
 
   const { job, error: watchError } = useJobWatch(fetched);
   const terminal = job ? isTerminalState(job.state) : false;
+  // A derived request needs an output to derive from, so it waits for success.
+  const canDerive = terminal && job?.state === 'succeeded';
+
+  // An inpaint needs a mask, and the only masks this platform has are assets the
+  // user already uploaded. Listed here rather than invented.
+  const imageAssetsQuery = useQuery<Asset[]>(
+    'assets?kind=image&limit=40&mask-picker',
+    async () => (await assetsApi.list({ kind: 'image', limit: 40 })).assets,
+    { staleMs: 30_000 },
+  );
+  const imageAssets = imageAssetsQuery.data ?? [];
 
   useEffect(() => {
     if (!job || !terminal) return;
@@ -67,7 +92,7 @@ export function JobDetailScreen({ jobId }: { jobId: string }) {
     };
   }, [job?.id, terminal, job?.state]);
 
-  const run = async (kind: 'cancel' | 'retry' | 'variations') => {
+  const run = async (kind: 'cancel' | 'retry' | 'variations' | 'edit' | 'extend' | 'transform') => {
     if (!job) return;
     setPending(kind);
     setActionError(null);
@@ -81,10 +106,32 @@ export function JobDetailScreen({ jobId }: { jobId: string }) {
         invalidate('jobs');
         toasts.push({ tone: 'info', title: 'Retry queued', text: `New job ${next.id}` });
         navigate(`/history/${next.id}`);
-      } else {
+      } else if (kind === 'variations') {
         const next = await generations.variations(job.id, { count: variationCount });
         invalidate('jobs');
         toasts.push({ tone: 'info', title: 'Variation requested', text: `New job ${next.id}` });
+        navigate(`/history/${next.id}`);
+      } else if (kind === 'edit') {
+        const next = await generations.edit(job.id, {
+          mode: editMode,
+          prompt: editPrompt.trim(),
+          mask_asset_id: editMode === 'inpaint' ? maskAssetId : null,
+        });
+        invalidate('jobs');
+        toasts.push({ tone: 'info', title: `Queued a${editMode === 'inpaint' ? 'n inpaint' : 'n outpaint'}`, text: `New job ${next.id}` });
+        navigate(`/history/${next.id}`);
+      } else if (kind === 'extend') {
+        const next = await generations.extend(job.id, {
+          seconds: extendSeconds,
+          prompt: extendPrompt.trim() || undefined,
+        });
+        invalidate('jobs');
+        toasts.push({ tone: 'info', title: 'Extension queued', text: `New job ${next.id}` });
+        navigate(`/history/${next.id}`);
+      } else {
+        const next = await generations.transform(job.id, { mode: transformMode, prompt: transformPrompt.trim() });
+        invalidate('jobs');
+        toasts.push({ tone: 'info', title: 'Transform queued', text: `New job ${next.id}` });
         navigate(`/history/${next.id}`);
       }
     } catch (err) {
@@ -354,6 +401,112 @@ export function JobDetailScreen({ jobId }: { jobId: string }) {
             {job.relation ? ` (${job.relation})` : ''}.
           </p>
         ) : null}
+
+        <div className="grid grid--2">
+          <div className="stack stack--tight">
+            <span className="field__label">Edit an output (inpaint or outpaint)</span>
+            <Select
+              label="Mode"
+              value={editMode}
+              onChange={(event) => setEditMode(event.target.value as 'inpaint' | 'outpaint')}
+              options={[
+                { value: 'inpaint', label: 'Inpaint — change part of the frame' },
+                { value: 'outpaint', label: 'Outpaint — extend the canvas' },
+              ]}
+            />
+            <TextInput
+              label="Instruction"
+              value={editPrompt}
+              onChange={(event) => setEditPrompt(event.target.value)}
+              placeholder="replace the sky with a storm"
+              hint="Sent as the prompt of the derived job."
+            />
+            {editMode === 'inpaint' ? (
+              <Select
+                label="Mask"
+                value={maskAssetId}
+                onChange={(event) => setMaskAssetId(event.target.value)}
+                placeholder={imageAssets.length ? 'Choose the mask image…' : 'No image asset to use as a mask'}
+                options={imageAssets.map((asset) => ({ value: asset.id, label: asset.name }))}
+                hint="Inpainting is refused without a mask: the mask is how the provider knows which area to change."
+              />
+            ) : null}
+            <Button
+              onClick={() => void run('edit')}
+              disabled={
+                !canDerive ||
+                !editPrompt.trim() ||
+                pending !== null ||
+                job.kind !== 'image' ||
+                (editMode === 'inpaint' && !maskAssetId)
+              }
+              disabledReason={
+                job.kind !== 'image'
+                  ? 'Editing works on an image output.'
+                  : editMode === 'inpaint' && !maskAssetId
+                    ? 'Inpainting needs a mask image.'
+                    : 'The job must have finished successfully and carry an instruction.'
+              }
+            >
+              {pending === 'edit' ? 'Queueing…' : 'Queue the edit'}
+            </Button>
+          </div>
+
+          <div className="stack stack--tight">
+            <span className="field__label">Continue or restyle a clip</span>
+            <TextInput
+              label="Extend by (seconds)"
+              type="number"
+              min={1}
+              max={30}
+              value={extendSeconds}
+              onChange={(event) => setExtendSeconds(Math.max(1, Math.min(30, Number(event.target.value) || 1)))}
+              hint="A sequel continues the clip; whether a lead-in is supported is the model's call."
+            />
+            <TextInput
+              label="Continuation (optional)"
+              value={extendPrompt}
+              onChange={(event) => setExtendPrompt(event.target.value)}
+              placeholder="she turns and walks into the rain"
+              hint="Left empty, the provider continues from what it already has."
+            />
+            <Button
+              onClick={() => void run('extend')}
+              disabled={!canDerive || pending !== null || job.kind !== 'video'}
+              disabledReason={job.kind !== 'video' ? 'Extension works on a video output.' : 'The job must have succeeded.'}
+            >
+              {pending === 'extend' ? 'Queueing…' : 'Queue the extension'}
+            </Button>
+            <TextInput
+              label="Transform mode and instruction"
+              value={transformPrompt}
+              onChange={(event) => setTransformPrompt(event.target.value)}
+              placeholder="restyle it as a watercolour"
+              hint={`Mode sent: ${transformMode}. The model decides whether it supports it; an unsupported transform is refused, not approximated.`}
+            />
+            <Select
+              label="Transform mode"
+              value={transformMode}
+              onChange={(event) => setTransformMode(event.target.value)}
+              options={[
+                { value: 'restyle', label: 'restyle' },
+                { value: 'video_to_video', label: 'video_to_video' },
+                { value: 'style_transfer', label: 'style_transfer' },
+              ]}
+            />
+            <Button
+              onClick={() => void run('transform')}
+              disabled={!canDerive || !transformPrompt.trim() || pending !== null || job.kind !== 'video'}
+              disabledReason={
+                job.kind !== 'video'
+                  ? 'A transform works on a video output.'
+                  : 'The job must have succeeded and carry an instruction.'
+              }
+            >
+              {pending === 'transform' ? 'Queueing…' : 'Queue the transform'}
+            </Button>
+          </div>
+        </div>
       </Section>
 
       {outputs.length ? (

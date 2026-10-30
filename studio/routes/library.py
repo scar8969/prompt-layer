@@ -264,14 +264,16 @@ def register_routes(router: Any, app: Any) -> None:
                 declared_type=str(body.get("content_type") or ""),
             )
             asset_id = str(asset.get("id") or "")
+        # The repository takes the asset id positionally and the rest as keywords.
+        # This call passed one mapping as the asset id, so the existence check
+        # searched for the string "{'asset_id': ...}" and every character
+        # reference was answered with "That asset could not be found."
         reference = app.repos.library.add_character_reference(
             request.session.workspace_id,
             character_id,
-            {
-                "asset_id": asset_id,
-                "role": str(body.get("role") or "identity"),
-                "notes": str(body.get("notes") or ""),
-            },
+            asset_id,
+            role=str(body.get("role") or "identity"),
+            notes=str(body.get("notes") or ""),
         )
         return Response.json({"reference": reference}, status=201)
 

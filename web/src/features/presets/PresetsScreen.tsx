@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { presets as presetsApi, prompts as promptsApi } from '../../api/endpoints.ts';
 import type { Preset, PromptRecord } from '../../api/types.ts';
 import { Badge } from '../../components/Badge.tsx';
@@ -15,7 +15,7 @@ import { Link } from '../../app/router.tsx';
 import { invalidate } from '../../state/query.ts';
 import { useToasts } from '../../state/toasts.tsx';
 import { useQuery } from '../../state/query.ts';
-import { formatDateTime, truncate } from '../../lib/util.ts';
+import { formatDateTime, titleCase, truncate } from '../../lib/util.ts';
 
 type Tab = 'presets' | 'prompts';
 
@@ -59,6 +59,7 @@ function PresetPanel() {
   const [modality, setModality] = useState('');
   const [query, setQuery] = useState('');
   const [applied, setApplied] = useState('');
+  const [category, setCategory] = useState('');
   const [editing, setEditing] = useState<Preset | 'new' | null>(null);
   const [nonce, setNonce] = useState(0);
 
@@ -69,6 +70,21 @@ function PresetPanel() {
   );
 
   const list = presets.data ?? [];
+
+  // Categories come from the list itself: the catalogue and a workspace library
+  // are one grid, so the chips count what is actually here rather than what the
+  // dataset claims.
+  const categories = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const preset of list) {
+      const key = preset.category ?? 'general';
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    return [...counts.entries()]
+      .map(([key, count]) => ({ key, label: titleCase(key), count }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [list]);
+  const visible = category ? list.filter((preset) => (preset.category ?? 'general') === category) : list;
 
   return (
     <div className="stack">
@@ -127,92 +143,110 @@ function PresetPanel() {
         />
       ) : null}
 
-      {list.length ? (
-        <div className="grid grid--2">
-          {list.map((preset) => (
-            <div className="card" key={preset.id}>
-              <div className="card__head">
-                <span className="card__title">{preset.name}</span>
-                <Badge tone="plain">{preset.modality}</Badge>
-                {preset.category ? <Badge>{preset.category}</Badge> : null}
-                {preset.is_builtin ? <Badge tone="accent">built-in</Badge> : null}
-                {preset.is_favorite ? <Badge tone="accent">favourite</Badge> : null}
-              </div>
-              <p className="muted" style={{ margin: 'var(--s2) 0' }}>
-                {preset.description ?? 'No description.'}
-              </p>
-              {preset.thumbnail_url ? (
-                <div className="media media--square" style={{ maxWidth: 160 }}>
-                  <img src={preset.thumbnail_url} alt={`Preview of ${preset.name}`} loading="lazy" />
-                </div>
-              ) : (
-                <p className="dim" style={{ margin: 0, fontSize: 'var(--fs-xs)' }}>
-                  No thumbnail was returned for this preset, so none is shown.
-                </p>
-              )}
-              <p className="mono" style={{ margin: 'var(--s2) 0 0', fontSize: 'var(--fs-xs)' }}>
-                {truncate(preset.prompt_template, 140) || 'No prompt template stored.'}
-              </p>
-              <div className="row row--between" style={{ marginTop: 'var(--s3)' }}>
-                <span className="dim" style={{ fontSize: 'var(--fs-xs)' }}>
-                  {preset.is_builtin ? 'Built-in catalogue' : formatDateTime(preset.created_at)}
-                </span>
-                <span className="row row--tight">
-                  {/* A catalogue preset is a document shipped with the app, not a
-                      row in this workspace: edit, favourite and delete all act on
-                      a saved preset, so they are not offered for one. */}
-                  {preset.is_builtin ? null : (
-                    <>
-                  <Button size="sm" onClick={() => setEditing(preset)}>
-                    Edit
-                  </Button>
-                  <Button
-                    size="sm"
-                    onClick={async () => {
-                      try {
-                        await presetsApi.favorite(preset.id, !preset.is_favorite);
-                        invalidate('presets');
-                        presets.reload();
-                        setNonce((n) => n + 1);
-                      } catch (err) {
-                        toasts.push({
-                          tone: 'error',
-                          title: 'That failed',
-                          text: err instanceof Error ? err.message : 'Unknown error',
-                        });
-                      }
-                    }}
-                  >
-                    {preset.is_favorite ? 'Unfavourite' : 'Favourite'}
-                  </Button>
-                  <DestructiveAction
-                    label="Delete"
-                    title={`Delete "${preset.name}"?`}
-                    body={<p style={{ margin: 0 }}>The preset is removed from the library. Jobs that used it are not touched.</p>}
-                    confirmLabel="Delete preset"
-                    onConfirm={async () => {
-                      await presetsApi.remove(preset.id);
-                      invalidate('presets');
-                      presets.reload();
-                      toasts.push({ tone: 'info', title: 'Preset deleted', text: preset.name });
-                      setNonce((n) => n + 1);
-                    }}
-                  />
-                    </>
-                  )}
-                  <Link
-                    to={`${preset.modality === 'video' ? '/video' : '/image'}?preset=${encodeURIComponent(preset.id)}`}
-                    className="btn btn--sm btn--primary"
-                    title="Open the studio with this preset's prompt, aspect and settings already filled in"
-                  >
-                    Generate this
-                  </Link>
-                </span>
-              </div>
-            </div>
+      {categories.length > 1 ? (
+        <div className="chip-row" role="group" aria-label="Filter presets by category">
+          <button type="button" className="chip" aria-pressed={category === ''} onClick={() => setCategory('')}>
+            All {list.length}
+          </button>
+          {categories.map((entry) => (
+            <button
+              key={entry.key}
+              type="button"
+              className="chip"
+              aria-pressed={category === entry.key}
+              onClick={() => setCategory(entry.key)}
+            >
+              {entry.label} {entry.count}
+            </button>
           ))}
         </div>
       ) : null}
+
+      {visible.length ? (
+        <div className="asset-grid">
+          {visible.map((preset) => {
+            const camera = preset.camera
+              ? Object.entries(preset.camera)
+                  .map(([key, value]) => `${key.replace(/_/g, ' ')}: ${String(value)}`)
+                  .join(', ')
+              : '';
+            return (
+              <div className="asset-tile" key={preset.id}>
+                <span className="asset-tile__media">
+                  {preset.thumbnail_url ? (
+                    <img src={preset.thumbnail_url} alt={`Preview of ${preset.name}`} loading="lazy" />
+                  ) : (
+                    <span
+                      aria-hidden="true"
+                      className="dim"
+                      style={{ fontSize: 'var(--fs-xs)', letterSpacing: '.08em', textTransform: 'uppercase' }}
+                    >
+                      {preset.modality === 'video' ? 'motion' : 'still'} · no preview
+                    </span>
+                  )}
+                </span>
+                <span className="asset-tile__body">
+                  <span className="asset-tile__name">{preset.name}</span>
+                  <span className="asset-tile__meta">
+                    {[preset.category, camera, preset.aspect_ratio].filter(Boolean).join(' · ') || preset.modality}
+                  </span>
+                </span>
+                <p className="dim" style={{ margin: 'var(--s2) 0 0', fontSize: 'var(--fs-xs)' }}>
+                  {truncate(preset.prompt_template, 110) || 'No prompt template stored.'}
+                </p>
+                <div className="row row--tight" style={{ marginTop: 'var(--s2)', flexWrap: 'wrap' }}>
+                  <Link
+                    to={`${preset.modality === 'video' ? '/video' : '/image'}?preset=${encodeURIComponent(preset.id)}&go=1`}
+                    className="btn btn--sm btn--primary"
+                    title="Load this preset into the studio and submit it straight away"
+                  >
+                    Generate
+                  </Link>
+                  <Link
+                    to={`${preset.modality === 'video' ? '/video' : '/image'}?preset=${encodeURIComponent(preset.id)}`}
+                    className="btn btn--sm"
+                    title="Load this preset and review it before submitting"
+                  >
+                    Open
+                  </Link>
+                  {preset.is_builtin ? (
+                    <Badge tone="accent">built-in</Badge>
+                  ) : (
+                    <>
+                      <Button size="sm" onClick={() => setEditing(preset)}>
+                        Edit
+                      </Button>
+                      <DestructiveAction
+                        label="Delete"
+                        title={`Delete "${preset.name}"?`}
+                        body={<p style={{ margin: 0 }}>The preset leaves the library. Jobs that used it are untouched.</p>}
+                        confirmLabel="Delete preset"
+                        onConfirm={async () => {
+                          await presetsApi.remove(preset.id);
+                          invalidate('presets');
+                          presets.reload();
+                          toasts.push({ tone: 'info', title: 'Preset deleted', text: preset.name });
+                          setNonce((n) => n + 1);
+                        }}
+                      />
+                      <span className="dim" style={{ fontSize: 'var(--fs-xs)' }}>
+                        {formatDateTime(preset.created_at)}
+                      </span>
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <EmptyState
+          icon="sliders"
+          title="Nothing in this category"
+          body="Clear the filter to see the whole library."
+          action={<Button onClick={() => setCategory('')}>Show everything</Button>}
+        />
+      )}
 
       <PresetDialog
         value={editing}

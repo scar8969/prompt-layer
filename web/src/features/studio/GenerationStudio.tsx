@@ -2,12 +2,14 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   assets as assetsApi,
   assistant,
+  characters as charactersApi,
   generations,
   presets as presetsApi,
   projects as projectsApi,
 } from '../../api/endpoints.ts';
 import type {
   Asset,
+  Character,
   ImageGenerationInput,
   Job,
   Model,
@@ -80,6 +82,10 @@ export function GenerationStudio({ kind }: { kind: StudioKind }) {
   // still resolving: the filter has to run again once the schema is known.
   const pendingPresetParameters = useRef<Record<string, unknown> | null>(null);
   const appliedDeepLinkPreset = useRef(false);
+  // Set when the link asked for a generation (`?go=1`): the preset library's
+  // Generate button is the confirmation, so the studio submits once the form it
+  // filled is complete rather than asking for the same click twice.
+  const submitOnArrival = useRef(false);
 
   const capabilities = useModelCapabilities(modelId);
   const schema = useModelParameters(modelId);
@@ -149,11 +155,45 @@ export function GenerationStudio({ kind }: { kind: StudioKind }) {
   const presets = useQuery<Preset[]>(`presets?modality=${kind}`, () => presetsApi.list({ modality: kind }), {
     staleMs: 30_000,
   });
+  const characters = useQuery<Character[]>('characters', () => charactersApi.list(), { staleMs: 60_000 });
   const referenceAssets = useQuery<Asset[]>(
     `assets?kind=image&limit=40`,
     async () => (await assetsApi.list({ kind: 'image', limit: 40 })).assets,
     { staleMs: 30_000 },
   );
+
+  /**
+   * Casting a saved character is this platform's answer to a reusable identity:
+   * its reference images travel as references and its description becomes part
+   * of the prompt, visibly, so nothing is added behind the author's back.
+   */
+  const castCharacter = (characterId: string) => {
+    const character = (characters.data ?? []).find((item) => item.id === characterId);
+    if (!character) return;
+    const description = character.default_prompt ?? character.description ?? '';
+    if (description && !prompt.includes(description)) {
+      setPrompt((current) => (current.trim() ? `${current.trim()} ${description}` : description));
+    }
+    const references = character.reference_asset_ids ?? [];
+    if (references.length) {
+      setReferences((current) => {
+        const known = new Set(current.map((item) => item.asset_id));
+        const added = references
+          .filter((assetId) => !known.has(assetId))
+          .map((assetId) => ({ asset_id: assetId, role: 'character_identity' }));
+        return [...current, ...added];
+      });
+    }
+    toasts.push({
+      tone: 'success',
+      title: `Cast ${character.name}`,
+      text: references.length
+        ? `${description ? 'Its description is in the prompt and ' : ''}${references.length} reference image(s) are attached.`
+        : description
+          ? 'Its description is in the prompt. It has no reference images, so the face is not locked.'
+          : 'This character has no description and no references, so nothing could be added.',
+    });
+  };
 
   const supportsNegative = currentCapabilities?.supports_negative_prompt === true;
   const supportsSeed = currentCapabilities?.supports_seed === true;
@@ -203,9 +243,10 @@ export function GenerationStudio({ kind }: { kind: StudioKind }) {
     if (!found) return;
     appliedDeepLinkPreset.current = true;
     applyPreset(found);
+    submitOnArrival.current = route.params.get('go') === '1';
     // Drop the query so a reload does not reapply the preset over edited fields.
     navigate(`/${kind}`, { replace: true });
-  }, [requestedPreset, presets.data, kind, navigate]);
+  }, [requestedPreset, presets.data, kind, navigate, route.params]);
 
   const { job, error: watchError } = useJobWatch(submitted);
 
@@ -262,6 +303,20 @@ export function GenerationStudio({ kind }: { kind: StudioKind }) {
       setSubmitting(false);
     }
   };
+
+  // The preset library's Generate button armed this. Waits for the form it filled
+  // to be complete (model, mode, prompt), then submits once and disarms.
+  useEffect(() => {
+    if (!submitOnArrival.current) return;
+    if (!model || !mode || !prompt.trim() || submitting || (job && !isTerminalState(job.state))) return;
+    submitOnArrival.current = false;
+    toasts.push({
+      tone: 'info',
+      title: 'Submitting the preset',
+      text: 'You arrived from the preset library with Generate, so it is being sent now.',
+    });
+    void submit();
+  });
 
   if (models.loading) return <LoadingState label="Reading the model registry…" />;
   if (models.error) return <ErrorState error={models.error} onRetry={models.reload} />;
@@ -440,6 +495,38 @@ export function GenerationStudio({ kind }: { kind: StudioKind }) {
             </div>
           </Section>
         ) : null}
+
+        <Section
+          title="Cast a character"
+          description="A saved character carries its description and its reference images into this request, which is how the same face survives across generations."
+        >
+          <Select
+            label="Character"
+            value=""
+            onChange={(event) => castCharacter(event.target.value)}
+            placeholder={
+              (characters.data ?? []).length ? 'Choose a character to cast…' : 'No character saved yet'
+            }
+            disabled={!(characters.data ?? []).length}
+            options={(characters.data ?? []).map((character) => ({
+              value: character.id,
+              label: `${character.name}${character.reference_asset_ids?.length ? ` · ${character.reference_asset_ids.length} reference(s)` : ' · no references'}`,
+            }))}
+            hint="Casting appends the character's description to the prompt and attaches its references — both are visible above, and removable."
+          />
+          {references.length ? (
+            <p className="field__hint" style={{ margin: 0 }}>
+              {references.length} reference image(s) attached.{' '}
+              <button
+                type="button"
+                className="btn btn--sm btn--ghost"
+                onClick={() => setReferences([])}
+              >
+                Clear them
+              </button>
+            </p>
+          ) : null}
+        </Section>
 
         <Section title="References">
           <p className="muted" style={{ margin: 0 }}>
