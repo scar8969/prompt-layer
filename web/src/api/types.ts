@@ -45,8 +45,8 @@ export interface User {
   id: string;
   email: string;
   display_name: string;
-  created_at?: string;
-  is_active?: boolean;
+  /** The account row reports this, and nothing else about the account's state. */
+  is_admin: boolean;
 }
 
 export interface WorkspaceSummary {
@@ -61,9 +61,9 @@ export type WorkspaceRole = 'owner' | 'admin' | 'editor' | 'viewer';
 export interface Workspace {
   id: string;
   name: string;
-  slug: string;
+  /** Kept optional: the API reports the name and the role, not a slug. */
+  slug?: string;
   role?: WorkspaceRole;
-  created_at?: string;
 }
 
 export interface SessionPayload {
@@ -103,6 +103,10 @@ export interface UsageRow {
   is_billable: boolean;
   note: string | null;
   created_at: string;
+  /** What the provider actually charged, when it reported an amount. */
+  actual_cost: number | null;
+  /** What the platform estimated before the call, when it estimated at all. */
+  estimated_cost: number | null;
 }
 
 export interface UsageResponse {
@@ -121,6 +125,11 @@ export interface AdapterType {
   supports_cancel?: boolean;
   auth_schemes?: string[];
   default_modes?: string[];
+  /** The base URL this provider documents, pre-filled by the wizard. */
+  default_base_url?: string;
+  base_url_hint?: string;
+  docs_url?: string;
+  credential_hint?: string;
 }
 
 export interface SystemStatus {
@@ -525,14 +534,20 @@ export interface Asset {
 /* ---------------------------------------------------------------- library */
 
 export interface Preset {
+  /** `builtin:<key>` for a catalogue preset, a row id for a saved one. */
   id: string;
-  workspace_id: string;
+  /** Present on a catalogue preset; that is how the client tells the two apart. */
+  key?: string | null;
+  is_builtin?: boolean;
+  /** Null on a catalogue preset: it is a document, not a row with a creation time. */
+  workspace_id: string | null;
   name: string;
   description: string | null;
   modality: Modality | string;
   category: string | null;
   prompt_template: string | null;
   negative_prompt_template: string | null;
+  tags?: string[] | null;
   aspect_ratio: string | null;
   model_preference: string | null;
   parameters: Record<string, unknown> | null;
@@ -540,8 +555,8 @@ export interface Preset {
   notes: string | null;
   thumbnail_url?: string | null;
   is_favorite?: boolean;
-  created_at: string;
-  updated_at?: string;
+  created_at: string | null;
+  updated_at?: string | null;
 }
 
 export interface PromptRecord {
@@ -626,3 +641,127 @@ export interface PromptImprovement {
   operation?: string | null;
   is_mock?: boolean;
 }
+
+/* --------------------------------------------------------- prompt layer */
+
+/**
+ * One documented fact about a provider endpoint. `active` is the server's
+ * answer, never an inference here; `disable_with` names the parameter and value
+ * that switches the layer off, when the provider documents such a switch.
+ */
+export interface PromptLayerFact {
+  id: string;
+  kind: string;
+  active: boolean;
+  detail: string;
+  disable_with: Record<string, unknown> | null;
+  source: string;
+  evidence?: string | null;
+  your_override?: Record<string, unknown> | null;
+}
+
+/** The generation-mode vocabulary, served by the backend that validates it. */
+export interface ModeVocabulary {
+  image: string[];
+  video: string[];
+  labels: Record<string, string>;
+}
+
+export interface PromptParamSpec {
+  default?: unknown;
+  options?: string[] | null;
+}
+
+export interface PromptCatalogModel {
+  slug: string;
+  display: string;
+  kind: string;
+  layer_count: number;
+  active_layer_count: number;
+  params: Record<string, PromptParamSpec>;
+  layers: PromptLayerFact[];
+}
+
+/**
+ * A model the layer dataset describes. Absence from this list is not a
+ * capability claim: it means no document in this repository describes it, and
+ * the preflight response says so rather than inventing defaults.
+ */
+export interface PromptModelSummary {
+  slug: string;
+  display: string;
+  provider: string;
+  kind: string;
+  accepts_image: boolean;
+  layer_count: number;
+  active_layer_count: number;
+}
+
+export interface PromptModel extends PromptModelSummary {
+  endpoint: string;
+  params: Record<string, PromptParamSpec>;
+  layers: PromptLayerFact[];
+  sources: string[];
+}
+
+/**
+ * One endpoint this platform can drive on a user's own key, joined to the layer
+ * facts. `prompt_model` is null when no document describes the endpoint; the UI
+ * shows that as unknown, never as a model that adds nothing.
+ */
+export interface PromptCatalogEntry {
+  endpoint: string;
+  display: string;
+  modality: string;
+  modes: string[];
+  aspect_ratios: string[];
+  resolutions: string[];
+  durations_seconds: number[];
+  max_outputs: number;
+  supports_negative_prompt: boolean;
+  supports_seed: boolean;
+  restrictions: string[];
+  notes: string[];
+  prompt_model: PromptCatalogModel | null;
+}
+
+export interface PreflightParam {
+  value: unknown;
+  source: string;
+  provider_default?: unknown;
+}
+
+export interface PromptConditionalLayer {
+  id: string;
+  kind: string;
+  applies_to: string;
+  scope?: string | null;
+  detail: string;
+  source: string;
+}
+
+export interface PromptPreflight {
+  model: string;
+  display: string;
+  provider: string;
+  endpoint: string;
+  unknown_model: boolean;
+  known_model: boolean;
+  prompt: {
+    original: string;
+    forwarded_as: string;
+    rewritten_upstream: boolean;
+    image_count: number;
+  };
+  messages: { role: string; content: string }[] | null;
+  params: Record<string, PreflightParam>;
+  layers: PromptLayerFact[];
+  conditional_layers: PromptConditionalLayer[];
+  warnings: string[];
+  full_control_patch: Record<string, unknown>;
+  estimate: { prompt_tokens: number; added_chars: number; note: string };
+  supports_compile: boolean;
+  compile_styles: string[];
+  version: string;
+}
+

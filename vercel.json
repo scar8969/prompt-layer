@@ -17,7 +17,7 @@
     "api/studio.py": {
       "memory": 1024,
       "maxDuration": 60,
-      "excludeFiles": "{**/__pycache__/**,**/test_*.py,.env*,.pytest_cache/**,.studio_env.sh,dev.py,docs/**,prompt-studio.env,promptlayer/**,promptlayer/*.py,promptlayer/vendor/**,requirements-dev.txt,scripts/**,tests/**,var/**,web/node_modules/**}"
+      "excludeFiles": "{**/__pycache__/**,**/test_*.py,.env*,.pytest_cache/**,.studio_env.sh,dev.py,docs/**,prompt-studio.env,promptlayer/vendor/**,requirements-dev.txt,scripts/**,tests/**,var/**,web/node_modules/**}"
     },
     "api/*.py": {
       "memory": 512,
@@ -32,6 +32,10 @@
     },
     {
       "source": "/api/studio/(.*)",
+      "destination": "/api/studio"
+    },
+    {
+      "source": "/((?!api/).*)",
       "destination": "/api/studio"
     }
   ],

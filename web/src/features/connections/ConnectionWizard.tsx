@@ -5,10 +5,11 @@ import type {
   Capabilities,
   Connection,
   ConnectionTestResult,
-  Model,
   Modality,
+  Model,
   ModelInput,
   ParameterSpec,
+  PromptCatalogEntry,
 } from '../../api/types.ts';
 import { Badge, MockBadge } from '../../components/Badge.tsx';
 import { Button } from '../../components/Button.tsx';
@@ -18,6 +19,7 @@ import { ErrorNotice } from '../../components/ErrorNotice.tsx';
 import { Icon } from '../../components/Icon.tsx';
 import { TagInput } from '../../components/Controls.tsx';
 import { invalidate } from '../../state/query.ts';
+import { useModeVocabulary, usePromptCatalog } from '../../state/promptLayer.ts';
 import { useToasts } from '../../state/toasts.tsx';
 import { formatDurationMs, formatDateTime } from '../../lib/util.ts';
 
@@ -66,7 +68,9 @@ export function ConnectionWizard({
   const [modelKey, setModelKey] = useState('');
   const [modelName, setModelName] = useState('');
   const [modality, setModality] = useState<Modality>('image');
-  const [modes, setModes] = useState<string[]>(['generate']);
+  // Empty until the adapter's own default arrives: hardcoding a default mode
+  // here was how three names that the service does not accept got into the UI.
+  const [modes, setModes] = useState<string[]>([]);
   const [capabilities, setCapabilities] = useState<Partial<Capabilities>>({});
   const [schemaJson, setSchemaJson] = useState('{\n  "parameters": []\n}');
   const [registered, setRegistered] = useState<Model[]>([]);
@@ -76,10 +80,52 @@ export function ConnectionWizard({
 
   const adapter = useMemo(() => adapters.find((item) => item.slug === adapterType) ?? null, [adapters, adapterType]);
 
+  // The mode vocabulary and the documented model catalogue both come from the
+  // backend. The wizard renders what the service validates instead of keeping a
+  // second copy of the list, which is what let `generate`, `edit` and `transform`
+  // sit in this form while the service refused every one of them.
+  const vocabulary = useModeVocabulary();
+  const catalog = usePromptCatalog();
+  const modeOptions = useMemo(
+    () => (modality === 'video' ? vocabulary.data?.video ?? [] : vocabulary.data?.image ?? []),
+    [modality, vocabulary.data],
+  );
+
+  // Deliberately not filtered by the current modality: picking a video endpoint
+  // is how the user tells the form it is a video model, so hiding those rows
+  // until the modality is switched would be a trap. The label carries the kind.
+  const documentedModels = useMemo(() => catalog.data?.endpoints ?? [], [catalog.data]);
+
+  /**
+   * Fill the form from the documented catalogue: the endpoint id, what it can
+   * do, and the controls it documents. This is the "bring your own key" path --
+   * the user supplies the key and picks a model by name, not by remembering an
+   * endpoint identifier.
+   */
+  const applyCatalogEntry = (entry: PromptCatalogEntry) => {
+    setModelKey(entry.endpoint);
+    setModelName(entry.display);
+    setModality(entry.modality === 'video' ? 'video' : 'image');
+    setModes(entry.modes);
+    setCapabilities({
+      aspect_ratios: entry.aspect_ratios,
+      resolutions: entry.resolutions,
+      durations_seconds: entry.durations_seconds,
+      supports_negative_prompt: entry.supports_negative_prompt,
+      supports_seed: entry.supports_seed,
+      max_outputs: Math.max(1, entry.max_outputs),
+    });
+  };
+
   useEffect(() => {
     if (!adapter) return;
     setAuthScheme(adapter.auth_schemes?.[0] ?? '');
-    setModes((current) => (current.length ? current : (adapter.default_modes ?? ['generate'])));
+    setModes((current) => (current.length ? current : adapter.default_modes ?? []));
+    // A provider that publishes a base URL fills it in: asking somebody to
+    // remember which host to type is how a BYOK form turns into a support
+    // ticket. A URL the user has already typed is never overwritten.
+    const documented = (adapter.default_base_url ?? '').trim();
+    if (documented) setBaseUrl((current) => (current.trim() ? current : documented));
   }, [adapter?.slug]);
 
   const stepIndex = STEPS.findIndex((entry) => entry.id === step);
@@ -265,8 +311,20 @@ export function ConnectionWizard({
                 type="url"
                 value={baseUrl}
                 onChange={(event) => setBaseUrl(event.target.value)}
-                placeholder="https://api.example.com/v1"
-                hint="The root the adapter appends its paths to."
+                placeholder={adapter?.default_base_url || 'https://api.example.com/v1'}
+                hint={
+                  <>
+                    {adapter?.base_url_hint || 'The root the adapter appends its paths to.'}
+                    {adapter?.docs_url ? (
+                      <>
+                        {' '}
+                        <a href={adapter.docs_url} target="_blank" rel="noreferrer noopener">
+                          Provider documentation
+                        </a>
+                      </>
+                    ) : null}
+                  </>
+                }
                 required
               />
               {(adapter?.auth_schemes ?? []).length ? (
@@ -290,7 +348,11 @@ export function ConnectionWizard({
                 autoComplete="off"
                 value={credential}
                 onChange={(event) => setCredential(event.target.value)}
-                hint="Sent once to the backend and stored server-side. The client never shows it again, never logs it and never writes it to storage."
+                hint={
+                  adapter?.credential_hint
+                    ? `${adapter.credential_hint} It is sent once to the backend and stored sealed; the client never shows it again, never logs it and never writes it to storage.`
+                    : 'Sent once to the backend and stored server-side. The client never shows it again, never logs it and never writes it to storage.'
+                }
                 required
               />
               <TextInput
@@ -443,6 +505,44 @@ export function ConnectionWizard({
             A model is only offered in a studio when it is registered here with an explicit profile. Everything ticked
             below becomes something the studio is allowed to enable.
           </p>
+
+          <div className="panel">
+            <p className="panel__title">Start from a documented model</p>
+            <p className="muted" style={{ margin: 0 }}>
+              These endpoints are described by documents in this repository: the identifier the provider expects, the
+              modes it really serves, and the controls it really has. Picking one fills the form. A model that is not
+              listed can still be registered by hand below — it simply has no facts on record, and the studio will say
+              so rather than assume.
+            </p>
+            {catalog.loading ? <p className="muted" style={{ margin: 0 }}>Reading the catalogue…</p> : null}
+            {catalog.error ? <ErrorNotice error={catalog.error} onRetry={catalog.reload} /> : null}
+            {catalog.data ? (
+              <>
+                <Select
+                  label="Documented endpoint"
+                  value={modelKey}
+                  onChange={(event) => {
+                    const entry = documentedModels.find((item) => item.endpoint === event.target.value);
+                    if (entry) applyCatalogEntry(entry);
+                    else setModelKey(event.target.value);
+                  }}
+                  placeholder="Choose a documented endpoint…"
+                  options={documentedModels.map((entry) => ({
+                    value: entry.endpoint,
+                    label: `${entry.display} · ${entry.modality} — ${entry.prompt_model ? `${entry.prompt_model.active_layer_count} prompt layer${entry.prompt_model.active_layer_count === 1 ? '' : 's'}` : 'no layer facts'}`,
+                  }))}
+                  hint={`${catalog.data.documented} of ${catalog.data.endpoints.length} endpoints have prompt-layer facts. Source: ${catalog.data.source}`}
+                />
+                {modelKey && !documentedModels.some((entry) => entry.endpoint === modelKey) ? (
+                  <p className="field__hint" style={{ margin: 0 }}>
+                    <span className="mono">{modelKey}</span> is not in the documented catalogue. That is allowed; the
+                    provider will be asked for its own schema, and the Prompt Lab will report the model as undocumented.
+                  </p>
+                ) : null}
+              </>
+            ) : null}
+          </div>
+
           <div className="grid grid--2">
             <div className="stack stack--tight">
               <TextInput
@@ -470,11 +570,19 @@ export function ConnectionWizard({
               />
               <div className="field">
                 <span className="field__label">Modes</span>
+                <p className="field__hint" style={{ margin: 0 }}>
+                  The vocabulary the service validates against, read from the backend. A mode this provider does not
+                  document is not offered, and a mode you do not declare becomes a disabled control in the studio
+                  rather than a failed job.
+                </p>
                 <div className="stack stack--tight">
-                  {['generate', 'variations', 'edit', 'inpaint', 'outpaint', 'extend', 'transform', 'upscale'].map((mode) => (
+                  {vocabulary.loading ? <p className="muted" style={{ margin: 0 }}>Reading the vocabulary…</p> : null}
+                  {vocabulary.error ? <ErrorNotice error={vocabulary.error} onRetry={vocabulary.reload} /> : null}
+                  {modeOptions.map((mode) => (
                     <Checkbox
                       key={mode}
-                      label={mode}
+                      label={vocabulary.data?.labels[mode] ?? mode}
+                      hint={<span className="mono">{mode}</span>}
                       checked={modes.includes(mode)}
                       onChange={(event) => {
                         setModes((current) =>

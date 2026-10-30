@@ -379,6 +379,13 @@ def adapter_types() -> List[Dict[str, Any]]:
                 "supports_cancel": cls.supports_cancel,
                 "auth_schemes": list(cls.auth_schemes),
                 "default_modes": list(cls().default_modes()),
+                # A provider the user brings a key to should not require them to
+                # remember its base URL. These three are on the adapter class
+                # already; the wizard reads them instead of shipping its own copy.
+                "default_base_url": getattr(cls, "default_base_url", "") or "",
+                "base_url_hint": getattr(cls, "base_url_hint", "") or "",
+                "docs_url": getattr(cls, "docs_url", "") or "",
+                "credential_hint": getattr(cls, "credential_hint", "") or "",
             }
         )
     return out

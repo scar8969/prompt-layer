@@ -135,6 +135,7 @@ function PresetPanel() {
                 <span className="card__title">{preset.name}</span>
                 <Badge tone="plain">{preset.modality}</Badge>
                 {preset.category ? <Badge>{preset.category}</Badge> : null}
+                {preset.is_builtin ? <Badge tone="accent">built-in</Badge> : null}
                 {preset.is_favorite ? <Badge tone="accent">favourite</Badge> : null}
               </div>
               <p className="muted" style={{ margin: 'var(--s2) 0' }}>
@@ -154,9 +155,14 @@ function PresetPanel() {
               </p>
               <div className="row row--between" style={{ marginTop: 'var(--s3)' }}>
                 <span className="dim" style={{ fontSize: 'var(--fs-xs)' }}>
-                  {formatDateTime(preset.created_at)}
+                  {preset.is_builtin ? 'Built-in catalogue' : formatDateTime(preset.created_at)}
                 </span>
                 <span className="row row--tight">
+                  {/* A catalogue preset is a document shipped with the app, not a
+                      row in this workspace: edit, favourite and delete all act on
+                      a saved preset, so they are not offered for one. */}
+                  {preset.is_builtin ? null : (
+                    <>
                   <Button size="sm" onClick={() => setEditing(preset)}>
                     Edit
                   </Button>
@@ -192,12 +198,14 @@ function PresetPanel() {
                       setNonce((n) => n + 1);
                     }}
                   />
+                    </>
+                  )}
                   <Link
-                    to={preset.modality === 'video' ? '/video' : '/image'}
-                    className="btn btn--sm"
-                    title="Open the studio where this preset can be selected"
+                    to={`${preset.modality === 'video' ? '/video' : '/image'}?preset=${encodeURIComponent(preset.id)}`}
+                    className="btn btn--sm btn--primary"
+                    title="Open the studio with this preset's prompt, aspect and settings already filled in"
                   >
-                    Use
+                    Generate this
                   </Link>
                 </span>
               </div>
@@ -239,7 +247,6 @@ function PresetDialog({
   const [promptTemplate, setPromptTemplate] = useState('');
   const [negativeTemplate, setNegativeTemplate] = useState('');
   const [aspectRatio, setAspectRatio] = useState('');
-  const [notes, setNotes] = useState('');
   const [error, setError] = useState<unknown>(null);
   const [pending, setPending] = useState(false);
 
@@ -253,7 +260,6 @@ function PresetDialog({
       setPromptTemplate('');
       setNegativeTemplate('');
       setAspectRatio('');
-      setNotes('');
     } else {
       setName(value.name);
       setDescription(value.description ?? '');
@@ -262,7 +268,6 @@ function PresetDialog({
       setPromptTemplate(value.prompt_template ?? '');
       setNegativeTemplate(value.negative_prompt_template ?? '');
       setAspectRatio(value.aspect_ratio ?? '');
-      setNotes(value.notes ?? '');
     }
     setError(null);
   }, [value === 'new' ? 'new' : value?.id]);
@@ -278,7 +283,6 @@ function PresetDialog({
       prompt_template: promptTemplate.trim() || null,
       negative_prompt_template: negativeTemplate.trim() || null,
       aspect_ratio: aspectRatio.trim() || null,
-      notes: notes.trim() || null,
     };
     try {
       if (value === 'new') await presetsApi.create(payload as Partial<Preset> & { name: string; modality: string });
@@ -343,7 +347,6 @@ function PresetDialog({
           onChange={(event) => setAspectRatio(event.target.value)}
           hint="Applied only when the selected model declares it."
         />
-        <TextArea label="Notes" value={notes} onChange={(event) => setNotes(event.target.value)} />
         {error ? <ErrorNotice error={error} /> : null}
       </div>
     </Dialog>

@@ -4,7 +4,7 @@
 Vercel serves the repo root as static files and mounts each file in /api as its
 own function exporting `handler`. This does the same on one port:
 
-  * a static server on PORT (default 8090) serving index.html only
+  * a static server on PORT (default 8090) serving the built client in web/dist
   * one HTTP server per file in /api, running that file's real `handler` class
   * /api/<name> is proxied to the matching function server
 
@@ -20,6 +20,7 @@ Not part of the deployment — Vercel never runs this file.
 from __future__ import annotations
 
 import importlib.util
+import mimetypes
 import os
 import threading
 import urllib.error
@@ -30,11 +31,6 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 ROOT = os.path.dirname(os.path.abspath(__file__))
 API_DIR = os.path.join(ROOT, "api")
 PORT = int(os.environ.get("PORT", "8090"))
-STATIC_TYPES = {
-    "index.html": "text/html; charset=utf-8",
-    "favicon.png": "image/png",
-    "favicon.ico": "image/x-icon",
-}
 UPSTREAM: dict = {}
 
 
@@ -95,15 +91,34 @@ class Front(BaseHTTPRequestHandler):
         self._reply(code, payload, ctype)
 
     def _static(self) -> None:
+        """The built client, exactly as the deployed function serves it.
+
+        `web/dist` is the product's only front door: there is no second page in
+        the repository root any more. A path with no extension that is not a
+        file falls back to index.html, because the client routes in the browser.
+        """
         path = urllib.parse.urlparse(self.path).path
+        root = os.path.join(ROOT, "web", "dist")
         rel = "index.html" if path in ("/", "") else path.lstrip("/")
-        ctype = STATIC_TYPES.get(rel)
-        full = os.path.join(ROOT, rel)
-        # Allowlist only: a stray .py/.json in the repo root must not become
-        # public just because it is on disk (same rule as the tokN site server).
-        if not ctype or not os.path.isfile(full):
-            return self._reply(404, f"not found: {rel}".encode(), "text/plain")
-        with open(full, "rb") as fh:
+        candidate = os.path.abspath(os.path.join(root, rel))
+        if candidate != os.path.abspath(root) and not candidate.startswith(os.path.abspath(root) + os.sep):
+            return self._reply(403, b"forbidden", "text/plain")
+        if os.path.isdir(candidate):
+            candidate = os.path.join(candidate, "index.html")
+        if not os.path.isfile(candidate):
+            if "." in os.path.basename(rel):
+                return self._reply(404, f"not found: {rel}".encode(), "text/plain")
+            candidate = os.path.join(root, "index.html")
+        if not os.path.isfile(candidate):
+            return self._reply(
+                404,
+                b"web/dist is missing. Run `npm run build` in web/ first.",
+                "text/plain",
+            )
+        ctype = mimetypes.guess_type(candidate)[0] or "application/octet-stream"
+        if ctype.startswith("text/") or ctype in ("application/javascript", "application/json"):
+            ctype += "; charset=utf-8"
+        with open(candidate, "rb") as fh:
             self._reply(200, fh.read(), ctype)
 
     def do_GET(self) -> None:  # noqa: N802

@@ -1,14 +1,13 @@
-"""Vercel function serving Studio at /api/studio/*.
+"""Vercel function serving the whole application: the API under /api/*, the page
+at every other path.
 
 Why one function and not eight
 ------------------------------
-Studio routes on `/api/...`, and the Prompt Layer functions already own
-`/api/health`, `/api/models` and `/api/presets` in this same repo. Mounting Studio
-on its own prefix keeps the two surfaces from shadowing each other, and one
-catch-all function keeps studio's internal routing in exactly one place: the
-Router in `studio/app.py`. Splitting by route group would mean re-encoding the
-same prefixes in `vercel.json`, where a mismatch is invisible until a 404 in
-production.
+The product is one application. Its API routes on `/api/...`, its client is the
+built React bundle in `web/dist`, and both are served by this one function so a
+request never crosses two entry points. One catch-all keeps routing in exactly
+one place -- the Router in `studio/app.py` -- instead of re-encoding prefixes in
+`vercel.json`, where a mismatch is invisible until a 404 in production.
 
 The prefix is stripped here rather than in the application, so `studio/routes/`
 keeps saying `/api/health` and the local server and this function run identical
@@ -51,16 +50,19 @@ _CLIENT_PREFIX = "/studio"
 def _client_path(raw_path: str, headers: dict) -> str:
     """The path the built client should see, when the request is for the page.
 
-    `/studio/` -> `/` (the app's index), `/studio/assets/x.js` -> `/assets/x.js`.
-    Returns the empty string when the request is for the API, not the page.
+    Every path that is not `/api/...` is a page request: the application lives at
+    the root, so `/` is its index, `/assets/index-*.js` is a bundle, and
+    `/prompt?model=x` falls back to index.html for client-side routing. The
+    `/studio` prefix is still honoured for the addresses that were published
+    before the merge, and is stripped the same way.
     """
     original = (headers.get("x-vercel-proxy-path") or "").strip() or raw_path
     if original.startswith("/api/"):
         return ""
     if original.startswith(_CLIENT_PREFIX):
         remainder = original[len(_CLIENT_PREFIX):]
-        return remainder or "/"
-    return ""
+        return remainder.split("?", 1)[0] or "/"
+    return original.split("?", 1)[0] or "/"
 
 
 def _serve_static(path: str) -> tuple:

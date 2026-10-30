@@ -7,6 +7,152 @@ the change. The repo's two products are siblings: **Prompt Layer**
 
 ## Unreleased
 
+### One product: the two front doors are merged
+
+The repository shipped two apps that shared a dataset and nothing else: a static
+preflight page served at `/`, and the React studio at `/studio`. A session, a
+navigation and a model registry stopped at the boundary between them, so the one
+question this product exists to answer ("what will this model do to my prompt?")
+was invisible from the screen where the prompt was actually sent.
+
+Merged into one application:
+
+- **`studio/routes/prompt.py`** — the layer dataset as four authenticated routes:
+  `GET /api/prompt/models`, `GET /api/prompt/models/{id}`, `GET /api/prompt/catalog`,
+  `POST /api/prompt/preflight`, plus `GET /api/prompt/modes` for the generation-mode
+  vocabulary. The dataset and the assembly logic are `promptlayer/`, unchanged.
+- **`GET /api/prompt/catalog`** — the join the merge makes possible: every endpoint
+  this platform can drive with a user's key, with the layer facts documented for it.
+  `prompt_model` is `null` for the endpoints no document describes, and the client
+  renders that absence as unknown rather than as "adds nothing" (18 of 22 documented).
+- **Prompt Lab** (`/prompt`) — model picker, prompt, the provider's own off-switches,
+  and the assembled result: forwarded prompt, every active layer with its evidence
+  and source, resolved parameters with their source, conditional layers, the
+  full-control patch, and the request payload.
+- **The connection wizard** now starts from the documented catalogue: pick a model by
+  name, paste your key, and the endpoint id, modality, modes and controls are filled
+  in from the same documents the Prompt Lab reads. A provider's base URL is
+  pre-filled from its adapter instead of being remembered by the user.
+- **The model inspector** shows the prompt layers documented for a registered model,
+  joined on the endpoint id, with a link into the Prompt Lab.
+
+### The contract between the client and the server, made checkable
+
+The three bugs above shared one cause: the client read field names the server never
+sends, and nothing compared the two. A missing field in JavaScript is `undefined` --
+rendered as a blank, a zero or an empty list -- so the failures were silent until
+somebody used the screen.
+
+Measured, not guessed: `scripts/dump_shapes.py` prints the real payload of every
+resource. It found the drift in eleven readers.
+
+| Reader | Asked for | The server sends |
+|---|---|---|
+| `readPreset` | `modality`, `parameters`, `camera`, `aspect_ratio`, `key` | `kind`, `defaults`, `camera_settings`, `slug` |
+| `readPrompt` | `text`, `negative_prompt`, `usage_count` | `body`, `negative_body`, `use_count` |
+| `readCharacter` | `default_prompt`, `preferred_model_id`, `reference_asset_ids` | `prompt_details`, `preferred_models`, `references` |
+| `readJob` | nested `model`, `state`, `message`, `error`, `kind`, `count` | `model` (absent), `status`, `status_message`, `error_code`/`error_message`, `modality`, `output_count` |
+| `readAsset` | `name`, `content_type`, `job_id`, `is_mock` | `filename`, `mime_type` (an asset is not a job) |
+| `readModel` | a nested `provider` block | `connection_name`, `connection_adapter_type`, `provider_name` |
+| `readProject` | `job_count`, `is_favorite`, `is_archived` | `status`, `asset_count` |
+| `readUser` / `readWorkspace` / `readConnection` / `readSystemStatus` | `is_active`, `created_at`, `slug`, `adapter_label`, `storage` | `is_admin`, `role`, `provider_slug`, `storage_backend` |
+
+Fixed on the server, because the payload was the poorer one:
+
+- **A job now carries its model and its provider.** `_shape.job_with_provider` builds
+  a `model` block from the registry, so job cards and the job header can name what
+  ran. Deleting a model still leaves the history readable.
+- **A character's detail carries `reference_count`,** the field the list projection
+  has, so one reader serves both.
+- **Library creates answer in the list's shape.** `POST /api/presets`,
+  `/api/prompts` and `/api/characters` returned raw rows, echoing `*_json` keys that
+  no list route sends.
+- **A built-in preset is now exactly a saved preset plus `is_builtin`.** `kind`,
+  `defaults`, `camera_settings`, `supported_modes`, `required_references`, `slug`.
+  The dataset's `aspect_ratio` rides in `defaults`, because the frame is part of the
+  look rather than a model parameter.
+
+Fixed on the client, in one place each:
+
+- Every reader now reads the keys the payload carries and translates them to the
+  view model the screens were written against. No screen knows the wire names.
+- Writes go through `presetBody`, `promptBody`, `characterBody`, which map the form
+  to the keys the route accepts. The preset form used to send `modality` to a route
+  that accepts `kind`, so **no preset could be saved from the UI at all**.
+- A preset's `defaults` are filtered against the selected model's schema when
+  applied, and `defaults.aspect_ratio` goes to the frame control.
+- `UsageRow` reads `actual_cost` / `estimated_cost` / `units` instead of the
+  `quantity` / `unit` / `is_estimate` fields it invented.
+
+Guarded, so it cannot silently regress:
+
+- `tests/test_client_contract.py` parses every `readX(raw)` in
+  `web/src/api/endpoints.ts`, hits a live server for the same resource, and fails
+  naming any field the client reads and the payload does not carry. It also parses
+  the three write builders against the repository's accepted-key whitelists, and
+  names the deliberate exceptions (a slug is derived from the name; optional lists
+  default to empty).
+- `tests/test_job_vocabulary.py` pins the status/state translation against the
+  database's CHECK constraint.
+- `scripts/dump_shapes.py` prints the shape of every resource, for the next time a
+  screen shows a blank.
+
+### The loop itself: preset -> key -> model -> generation
+
+The merge above is plumbing. Exercising the actual product loop — pick a look,
+generate on a model you brought a key for — found three defects that made it not
+work, none of which any existing test could see:
+
+1. **A built-in preset arrived without an `id`, and its negative prompt under the
+   dataset's own key.** `GET /api/presets` returned the raw catalogue entry
+   (`key`, `negative_template`) next to saved rows (`id`,
+   `negative_prompt_template`), so 40 image and 30 video presets could not be
+   selected reliably and never filled the negative-prompt field. Both sources now
+   come back in one shape from `studio/routes/library.py:_builtin_preset`;
+   `tests/test_preset_loop.py` pins the id, the negative prompt and `is_builtin`,
+   and the library screen no longer offers edit/delete/favourite for a document
+   that is not a row.
+
+2. **Applying a preset was a 400, not a generation.** Every catalogue preset
+   carries `cfg_scale`, `steps` and `sampler`; a fal or OpenAI model does not
+   declare them, and the backend refuses a parameter the model does not declare —
+   correctly. The studio now filters a preset against the selected model's
+   parameter schema and says which settings it left out, and re-filters when the
+   preset's own model is selected and its schema arrives.
+
+3. **A finished job still read as `queued` in the client.** The server stores
+   `status` (`queued` … `completed`); the screens read `state` and every terminal
+   check in the client is written against `succeeded`. Reading a field that did
+   not exist made every job look queued forever: the poller never stopped and the
+   submit button never came back. One translation table now lives in
+   `web/src/api/endpoints.ts`, used for reads, for the events list and for the
+   Jobs screen filter, and `tests/test_job_vocabulary.py` parses the database's
+   CHECK constraint and fails when the server grows a status the client has not
+   translated.
+
+Also added: the preset library hands a look to a studio (`Generate this` →
+`/image?preset=<id>`), and the studio applies it on load, filtered and with the
+preset's own model selected when it names one.
+
+Fixed on the way, both blocking the "bring your own key" path:
+
+- **The wizard offered three modes the service rejects** (`generate`, `edit`,
+  `transform`). Any model registered through the UI failed with *"not a generation
+  mode"*, and the default selection was one of them. The vocabulary now comes from
+  `studio/adapters/base.py` through `GET /api/prompt/modes`, so the form cannot drift
+  from the validator.
+- **`api/studio.py` excluded `promptlayer/**`** from its bundle. It now imports that
+  package, so the exclusion would have 404'd every Prompt Lab route on the deployment
+  while working locally. `tests/test_deploy.py` pins it.
+
+Retired:
+
+- **`index.html`** (the static page) and **`tests/test_ui.py`** (its key-field tests).
+  The dataset is served from the application, and the equivalence that mattered —
+  the key never being stored client-side — is covered by the connection tests.
+- The root is no longer a static file: `/((?!api/).*)` rewrites to the one function,
+  which serves `web/dist` for every non-API path. `dev.py` serves `web/dist` too.
+
 ### The deployment build: three things a local test cannot see
 
 `vercel build --prod --yes` was run for the first time against the Studio

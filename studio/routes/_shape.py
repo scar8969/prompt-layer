@@ -132,6 +132,31 @@ def asset(value: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
 def assets(values: Iterable[Mapping[str, Any]]) -> List[Dict[str, Any]]:
     """Several assets, each shaped by asset()."""
     return [asset(value) for value in values or ()]
+def _model_ref(repos: Any, workspace_id: str, model_id: str) -> Optional[Dict[str, Any]]:
+    """The model block a job's history entry needs, or None if it is gone.
+
+    A job stores `model_id`, and every screen that lists a job wants to name the
+    model. The client used to look for a nested `model` block that no route ever
+    sent, so job cards and the job detail header showed a blank model. Building it
+    here -- from the registry, failing quietly when the model was deleted -- is
+    cheaper than teaching four screens to join two payloads.
+    """
+    if not model_id:
+        return None
+    try:
+        model = repos.models.with_provider(workspace_id, model_id)
+    except Exception:  # noqa: BLE001 - a deleted model is a normal case
+        return None
+    if not isinstance(model, Mapping):
+        return None
+    return {
+        "id": str(model.get("id") or ""),
+        "model_key": str(model.get("model_key") or ""),
+        "display_name": str(model.get("display_name") or model.get("model_key") or ""),
+        "modality": str(model.get("modality") or ""),
+    }
+
+
 def job_with_provider(repos: Any, workspace_id: str, value: Mapping[str, Any]) -> Dict[str, Any]:
     """A job plus the provider facts the client needs to badge a mock.
 
@@ -161,4 +186,5 @@ def job_with_provider(repos: Any, workspace_id: str, value: Mapping[str, Any]) -
             provider["is_mock"] = is_mock
     out["provider"] = provider
     out["is_mock"] = is_mock
+    out["model"] = _model_ref(repos, workspace_id, model_id)
     return out

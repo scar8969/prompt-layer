@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import base64
 import binascii
-from typing import Any
+from typing import Any, Dict, Mapping
 
 from ..errors import VALIDATION_FAILED, ApiError
 from ..http import RequestContext, Response
@@ -27,6 +27,57 @@ def _decode(value: Any) -> bytes:
         ) from None
 
 
+def _builtin_preset(entry: Mapping[str, Any]) -> Dict[str, Any]:
+    """One catalogue preset, in exactly the shape a saved preset arrives in.
+
+    Two vocabularies had to be reconciled, and only one direction is honest:
+    the *stored* row is what the library table can return, so a catalogue entry is
+    translated into that shape rather than the other way round.
+
+    | catalogue (`presets_data.py`) | row (`presets` table) |
+    |---|---|
+    | `key`                         | `id` = `builtin:<key>`, and `slug` = `<key>` |
+    | `modality`                    | `kind`                |
+    | `negative_template`           | `negative_prompt_template` |
+    | `parameters`                  | `defaults`            |
+    | `camera`                      | `camera_settings`     |
+    | `reference_requirements`      | `required_references` |
+
+    The dataset's `aspect_ratio` is a property of the look rather than a model
+    parameter, so it travels inside `defaults` under its own name and the studio
+    maps it to the frame control instead of sending it as a parameter.
+
+    A catalogue entry is a document, not a row: it has no workspace and no
+    creation time, and the client is told so rather than being handed a
+    plausible-looking timestamp.
+    """
+    defaults = dict(entry.get("parameters") or {})
+    if entry.get("aspect_ratio"):
+        defaults["aspect_ratio"] = entry["aspect_ratio"]
+    return {
+        "id": "builtin:%s" % entry["key"],
+        "slug": entry["key"],
+        "kind": entry["modality"],
+        "name": entry["name"],
+        "description": entry.get("description") or "",
+        "category": entry.get("category") or "general",
+        "thumbnail_url": None,
+        "prompt_template": entry.get("prompt_template") or "",
+        "negative_prompt_template": entry.get("negative_template") or "",
+        "defaults": defaults,
+        "supported_modes": list(entry.get("modes") or []),
+        "required_references": list(entry.get("reference_requirements") or []),
+        "camera_settings": dict(entry.get("camera") or {}),
+        "tags": list(entry.get("tags") or []),
+        "notes": entry.get("notes") or "",
+        "is_builtin": True,
+        "workspace_id": None,
+        "created_by_user_id": None,
+        "created_at": None,
+        "updated_at": None,
+    }
+
+
 def register_routes(router: Any, app: Any) -> None:
     """Attach this group to the router. Called once, at startup."""
 
@@ -42,7 +93,7 @@ def register_routes(router: Any, app: Any) -> None:
         from ..presets_data import all_category_labels, presets_for
 
         modality = request.arg("modality") or "image"
-        builtin = presets_for(modality)
+        builtin = [_builtin_preset(entry) for entry in presets_for(modality)]
         favorite_only = request.flag("favorite")
         saved = app.repos.library.list_presets(
             request.session.workspace_id,
@@ -75,9 +126,9 @@ def register_routes(router: Any, app: Any) -> None:
         from ..presets_data import preset as builtin_preset
 
         identifier = request.params["id"]
-        found = None
         if identifier.startswith("builtin:"):
-            found = builtin_preset(identifier.split(":", 1)[1])
+            entry = builtin_preset(identifier.split(":", 1)[1])
+            found = _builtin_preset(entry) if entry else None
         else:
             found = app.repos.library.get_preset(request.session.workspace_id, identifier)
         return Response.json({"preset": found})
@@ -88,7 +139,7 @@ def register_routes(router: Any, app: Any) -> None:
         preset = app.repos.library.update_preset(
             request.session.workspace_id, request.params["id"], request.json()
         )
-        return Response.json({"preset": preset})
+        return Response.json({"preset": _shape.row(preset)})
 
     def delete_preset(request: RequestContext) -> Response:
         """Remove a saved preset."""
@@ -104,7 +155,7 @@ def register_routes(router: Any, app: Any) -> None:
             request.params["id"],
             bool(body.get("favorite", True)),
         )
-        return Response.json({"preset": preset})
+        return Response.json({"preset": _shape.row(preset)})
 
     # -- saved prompts -----------------------------------------------------
 
@@ -120,24 +171,24 @@ def register_routes(router: Any, app: Any) -> None:
         prompt = app.repos.library.create_prompt(
             request.session.workspace_id, request.session.user_id, request.json()
         )
-        return Response.json({"prompt": prompt}, status=201)
+        return Response.json({"prompt": _shape.row(prompt)}, status=201)
 
     def show_prompt(request: RequestContext) -> Response:
         """One saved prompt."""
         prompt = app.repos.library.get_prompt(request.session.workspace_id, request.params["id"])
-        return Response.json({"prompt": prompt})
+        return Response.json({"prompt": _shape.row(prompt)})
 
     def update_prompt(request: RequestContext) -> Response:
         """Change a saved prompt."""
         prompt = app.repos.library.update_prompt(
             request.session.workspace_id, request.params["id"], request.json()
         )
-        return Response.json({"prompt": prompt})
+        return Response.json({"prompt": _shape.row(prompt)})
 
     def use_prompt(request: RequestContext) -> Response:
         """Record that a saved prompt was used, for the recently-used order."""
         prompt = app.repos.library.mark_prompt_used(request.session.workspace_id, request.params["id"])
-        return Response.json({"prompt": prompt})
+        return Response.json({"prompt": _shape.row(prompt)})
 
     def delete_prompt(request: RequestContext) -> Response:
         """Remove a saved prompt."""
@@ -159,14 +210,23 @@ def register_routes(router: Any, app: Any) -> None:
         character = app.repos.library.create_character(
             request.session.workspace_id, request.session.user_id, request.json()
         )
-        return Response.json({"character": character}, status=201)
+        out = _shape.row(character)
+        out["reference_count"] = len(out.get("references") or [])
+        return Response.json({"character": out}, status=201)
 
     def show_character(request: RequestContext) -> Response:
-        """One character with its references."""
+        """One character with its references, and the count the list also reports.
+
+        The list projection carries `reference_count` because it does not carry the
+        rows; without the same field here, a client that reads one shape has to
+        branch on which route it called.
+        """
         character = app.repos.library.get_character(
             request.session.workspace_id, request.params["id"]
         )
-        return Response.json({"character": character})
+        out = _shape.row(character)
+        out["reference_count"] = len(out.get("references") or [])
+        return Response.json({"character": out})
 
     def update_character(request: RequestContext) -> Response:
         """Change a character."""
@@ -174,7 +234,7 @@ def register_routes(router: Any, app: Any) -> None:
         character = app.repos.library.update_character(
             request.session.workspace_id, request.params["id"], request.json()
         )
-        return Response.json({"character": character})
+        return Response.json({"character": _shape.row(character)})
 
     def delete_character(request: RequestContext) -> Response:
         """Remove a character. Its assets stay in the library."""

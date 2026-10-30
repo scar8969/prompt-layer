@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from . import assets, auth, connections, generations, jobs, library, models, system
+from . import assets, auth, connections, generations, jobs, library, models, prompt, system
 
 
 def register_routes(router: Any, app: Any) -> None:
@@ -15,7 +15,17 @@ def register_routes(router: Any, app: Any) -> None:
     404. Each group owns its own paths so a duplicate registration would fail
     loudly here rather than silently shadow a handler.
     """
-    for module in (system, auth, connections, models, generations, jobs, assets, library):
+    for module in (
+        system,
+        auth,
+        connections,
+        models,
+        generations,
+        jobs,
+        assets,
+        library,
+        prompt,
+    ):
         module.register_routes(router, app)
 
 

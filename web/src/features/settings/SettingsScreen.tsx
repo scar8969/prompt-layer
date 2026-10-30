@@ -95,8 +95,7 @@ export function SettingsScreen() {
               { key: 'Display name', value: session.user?.display_name ?? 'not reported' },
               { key: 'Email', value: session.user?.email ?? 'not reported' },
               { key: 'User id', value: <span className="mono">{session.user?.id ?? '—'}</span> },
-              { key: 'Active', value: session.user?.is_active === false ? 'no — the backend marks it inactive' : 'yes' },
-              { key: 'Created', value: session.user?.created_at ? formatRelative(session.user.created_at) : 'not reported' },
+              { key: 'Account', value: session.user?.is_admin ? 'administrator' : 'member' },
               {
                 key: 'Permissions',
                 value: session.permissions.length ? session.permissions.join(', ') : 'the backend reported none',

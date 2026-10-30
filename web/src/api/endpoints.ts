@@ -17,6 +17,7 @@ import type {
   ImageGenerationInput,
   Job,
   JobEvent,
+  JobState,
   JobListResponse,
   MeResponse,
   Model,
@@ -24,9 +25,19 @@ import type {
   ModelInput,
   ModelParametersResponse,
   ModelPatchInput,
+  ModeVocabulary,
+  PreflightParam,
   Preset,
   Project,
+  PromptCatalogEntry,
+  PromptCatalogModel,
+  PromptConditionalLayer,
   PromptImprovement,
+  PromptLayerFact,
+  PromptModel,
+  PromptModelSummary,
+  PromptParamSpec,
+  PromptPreflight,
   PromptRecord,
   ReferenceRoleOption,
   SystemStatus,
@@ -40,6 +51,53 @@ import type {
 } from './types.ts';
 import { arr, bool, isRecord, num, str, strList } from '../lib/util.ts';
 
+/* ------------------------------------------------- job status <-> job state */
+/* Two vocabularies meet here and only here. The server stores the status of a
+   job (`queued`, `validating`, `submitting`, `processing`, `downloading`,
+   `completed`, `failed`, `cancelled`, `timed_out` -- the CHECK constraint in
+   studio/migrations/0004_jobs.sql is the authority). The screens speak states
+   (`succeeded`, which is what `completed` means to a person). Reading `state`
+   off a payload that carries `status` made every job look queued forever: the
+   poller never stopped and the submit button never came back. Two maps, one
+   place, and a test that fails when the server grows a status this file has not
+   translated. */
+
+const JOB_STATE_FROM_STATUS: Record<string, JobState> = {
+  draft: 'queued',
+  queued: 'queued',
+  validating: 'queued',
+  submitting: 'processing',
+  processing: 'processing',
+  downloading: 'processing',
+  completed: 'succeeded',
+  failed: 'failed',
+  cancelled: 'cancelled',
+  timed_out: 'failed',
+};
+
+const JOB_STATUS_FROM_STATE: Record<string, string> = {
+  queued: 'queued',
+  processing: 'processing',
+  running: 'processing',
+  succeeded: 'completed',
+  failed: 'failed',
+  cancelled: 'cancelled',
+  canceled: 'cancelled',
+};
+
+/** The screen's word for what the server reported. Unknown values pass through. */
+export function jobStateFromStatus(status: unknown): JobState {
+  const raw = str(status);
+  if (!raw) return 'queued';
+  return JOB_STATE_FROM_STATUS[raw] ?? raw;
+}
+
+/** The server's word for a filter the screen asked for. */
+export function jobStatusFromState(state: string | undefined): string | undefined {
+  if (!state) return undefined;
+  return JOB_STATUS_FROM_STATE[state] ?? state;
+}
+
 /* ------------------------------------------------------------ normalisers */
 /* The backend is the source of truth; these readers only coerce the JSON that
    arrived into the documented shape and never fabricate a missing field.      */
@@ -50,8 +108,7 @@ function readUser(raw: unknown): User {
     id: str(r.id) ?? '',
     email: str(r.email) ?? '',
     display_name: str(r.display_name) ?? str(r.email) ?? 'Unknown user',
-    created_at: str(r.created_at) ?? undefined,
-    is_active: bool(r.is_active) ?? undefined,
+    is_admin: bool(r.is_admin) ?? false,
   };
 }
 
@@ -60,9 +117,7 @@ function readWorkspace(raw: unknown): Workspace {
   return {
     id: str(r.id) ?? '',
     name: str(r.name) ?? 'Workspace',
-    slug: str(r.slug) ?? '',
     role: (str(r.role) as Workspace['role']) ?? undefined,
-    created_at: str(r.created_at) ?? undefined,
   };
 }
 
@@ -100,7 +155,6 @@ export function readCapabilities(raw: unknown): Capabilities {
 
 export function readModel(raw: unknown): Model {
   const r = isRecord(raw) ? raw : {};
-  const providerRaw = isRecord(r.provider) ? r.provider : {};
   const schemaRaw = isRecord(r.parameter_schema) ? r.parameter_schema : {};
   return {
     id: str(r.id) ?? '',
@@ -120,13 +174,16 @@ export function readModel(raw: unknown): Model {
     is_default: bool(r.is_default) ?? false,
     created_at: str(r.created_at) ?? '',
     updated_at: str(r.updated_at) ?? '',
+    // The registry flattens the connection into `connection_*` keys and a
+    // `provider_slug`; it never nests a provider block, which is what this reader
+    // used to look for -- so every model picker said "Unknown connection".
     provider: {
-      connection_name: str(providerRaw.connection_name) ?? 'Unknown connection',
-      adapter_type: str(providerRaw.adapter_type) ?? '',
-      adapter_label: str(providerRaw.adapter_label) ?? str(providerRaw.adapter_type) ?? 'Unknown adapter',
-      base_url: str(providerRaw.base_url),
-      is_mock: bool(providerRaw.is_mock) ?? false,
-      connection_enabled: bool(providerRaw.connection_enabled) ?? true,
+      connection_name: str(r.connection_name) ?? 'Unknown connection',
+      adapter_type: str(r.connection_adapter_type) ?? str(r.adapter_type) ?? '',
+      adapter_label: str(r.provider_name) ?? str(r.provider_slug) ?? str(r.connection_adapter_type) ?? 'Unknown adapter',
+      base_url: str(r.base_url),
+      is_mock: bool(r.is_mock) ?? false,
+      connection_enabled: bool(r.connection_is_enabled) ?? true,
     },
   };
 }
@@ -138,7 +195,9 @@ function readConnection(raw: unknown): Connection {
     id: str(r.id) ?? '',
     name: str(r.name) ?? 'Unnamed connection',
     adapter_type: str(r.adapter_type) ?? '',
-    adapter_label: str(r.adapter_label) ?? str(r.adapter_type) ?? 'Unknown adapter',
+    // The row names its adapter type; the friendly label lives in the adapter
+    // registry, so the slug is what a row can honestly report.
+    adapter_label: str(r.provider_slug) ?? str(r.adapter_type) ?? 'Unknown adapter',
     base_url: str(r.base_url),
     auth_scheme: str(r.auth_scheme),
     model_count: num(r.model_count) ?? 0,
@@ -178,7 +237,7 @@ function readSystemStatus(raw: unknown): SystemStatus {
     environment: str(r.environment) ?? 'unknown',
     time_utc: str(r.time_utc) ?? '',
     database: str(r.database) ?? str(r.database_backend) ?? 'unknown',
-    storage: str(r.storage) ?? str(r.storage_backend) ?? 'unknown',
+    storage: str(r.storage_backend) ?? 'unknown',
     adapters: arr(r.adapters).map(readAdapter),
     mock_provider_enabled: bool(r.mock_provider_enabled) ?? false,
     billing: readBilling(r.billing),
@@ -198,16 +257,18 @@ export function readAsset(raw: unknown): Asset {
     id,
     workspace_id: str(r.workspace_id) ?? '',
     project_id: str(r.project_id),
-    job_id: str(r.job_id),
+    // An asset does not know which job produced it, and it is not itself mock:
+    // the job is. Its file name is `filename` and its type is `mime_type`.
+    job_id: null,
     kind: str(r.kind) ?? 'upload',
-    name: str(r.name) ?? 'Untitled asset',
-    content_type: str(r.content_type) ?? 'application/octet-stream',
+    name: str(r.filename) ?? 'Untitled asset',
+    content_type: str(r.mime_type) ?? 'application/octet-stream',
     byte_size: num(r.byte_size) ?? 0,
     width: num(r.width),
     height: num(r.height),
     duration_seconds: num(r.duration_seconds),
     is_favorite: bool(r.is_favorite) ?? false,
-    is_mock: bool(r.is_mock) ?? false,
+    is_mock: false,
     content_url: str(r.content_url) ?? `/api/assets/${id}/content`,
     thumbnail_url: str(r.thumbnail_url) ?? (id ? `/api/assets/${id}/thumbnail` : null),
     created_at: str(r.created_at) ?? '',
@@ -219,28 +280,35 @@ export function readOutput(raw: unknown): Job['outputs'][number] {
   const r = isRecord(raw) ? raw : {};
   const id = str(r.id) ?? '';
   const assetId = str(r.asset_id);
+  const ingestError = str(r.ingest_error);
   return {
     id,
     asset_id: assetId,
-    url: str(r.url) ?? (assetId ? `/api/assets/${assetId}/content` : null),
-    content_type: str(r.content_type),
-    width: num(r.width),
-    height: num(r.height),
-    duration_seconds: num(r.duration_seconds),
-    file_name: str(r.file_name),
-    byte_size: num(r.byte_size),
-    seed: num(r.seed),
-    metadata: isRecord(r.metadata) ? r.metadata : null,
-    is_mock: bool(r.is_mock) ?? false,
+    // A stored output carries the provider's URL and the asset it became; the
+    // size, dimensions and type live on the asset, not on this row.
+    url: str(r.provider_url) ?? (assetId ? `/api/assets/${assetId}/content` : null),
+    content_type: null,
+    width: null,
+    height: null,
+    duration_seconds: null,
+    file_name: null,
+    byte_size: null,
+    seed: null,
+    metadata: ingestError ? { ingest_error: ingestError } : null,
+    is_mock: false,
   };
 }
 
 export function readJob(raw: unknown): Job {
   const r = isRecord(raw) ? raw : {};
   const modelRaw = isRecord(r.model) ? r.model : null;
-  const modelProviderRaw = modelRaw && isRecord(modelRaw.provider) ? modelRaw.provider : {};
+  // The provider of a job is the shaped connection the server attaches; the model
+  // block names the model. Neither used to be read from the keys that carry them.
+  const jobProvider = isRecord(r.provider) ? r.provider : {};
   const costRaw = isRecord(r.cost_estimate) ? r.cost_estimate : null;
-  const errorRaw = isRecord(r.error) ? r.error : null;
+  const providerError = isRecord(r.provider_error) ? r.provider_error : null;
+  const errorCode = str(r.error_code);
+  const errorMessage = str(r.error_message);
   return {
     id: str(r.id) ?? '',
     workspace_id: str(r.workspace_id) ?? '',
@@ -252,15 +320,15 @@ export function readJob(raw: unknown): Job {
           display_name: str(modelRaw.display_name) ?? str(modelRaw.model_key) ?? 'Unknown model',
           modality: str(modelRaw.modality) ?? '',
           provider: {
-            connection_name: str(modelProviderRaw.connection_name) ?? '',
-            adapter_label: str(modelProviderRaw.adapter_label) ?? '',
-            is_mock: bool(modelProviderRaw.is_mock) ?? false,
+            connection_name: str(jobProvider.name) ?? '',
+            adapter_label: str(jobProvider.provider_slug) ?? '',
+            is_mock: bool(jobProvider.is_mock) ?? false,
           },
         }
       : null,
     mode: str(r.mode) ?? '',
-    kind: str(r.kind) ?? '',
-    state: str(r.state) ?? 'queued',
+    kind: str(r.modality) ?? '',
+    state: jobStateFromStatus(r.status),
     prompt: str(r.prompt),
     negative_prompt: str(r.negative_prompt),
     parameters: isRecord(r.parameters) ? r.parameters : null,
@@ -269,21 +337,24 @@ export function readJob(raw: unknown): Job {
       url: str(ref.url) ?? undefined,
       role: str(ref.role) ?? 'reference',
     })),
-    seed: num(r.seed),
-    count: num(r.count),
-    provider_job_id: str(r.provider_job_id),
-    provider_status: str(r.provider_status),
-    progress: num(r.progress),
-    progress_is_estimate: bool(r.progress_is_estimate) ?? false,
-    message: str(r.message),
-    error: errorRaw
-      ? {
-          code: str(errorRaw.code) ?? 'internal',
-          message: str(errorRaw.message) ?? '',
-          hint: str(errorRaw.hint),
-          details: isRecord(errorRaw.details) ? errorRaw.details : null,
-        }
-      : null,
+    seed: null,
+    count: num(r.output_count),
+    provider_job_id: str(r.provider_job_ref),
+    provider_status: null,
+    progress: null,
+    progress_is_estimate: false,
+    message: str(r.status_message),
+    // A failure is stored as three columns and the provider's own payload, not as
+    // a nested `error` object. Built here so a failed job can say why it failed.
+    error:
+      errorCode || errorMessage
+        ? {
+            code: errorCode ?? 'provider_error',
+            message: errorMessage ?? '',
+            hint: str(r.error_hint),
+            details: providerError,
+          }
+        : null,
     attempt: num(r.attempt),
     max_attempts: num(r.max_attempts),
     is_mock: bool(r.is_mock) ?? false,
@@ -301,7 +372,7 @@ export function readJob(raw: unknown): Job {
     created_at: str(r.created_at) ?? '',
     started_at: str(r.started_at),
     finished_at: str(r.finished_at),
-    elapsed_ms: num(r.elapsed_ms),
+    elapsed_ms: null,
     parent_job_id: str(r.parent_job_id),
     relation: str(r.relation),
   };
@@ -315,9 +386,11 @@ function readProject(raw: unknown): Project {
     name: str(r.name) ?? 'Untitled project',
     description: str(r.description),
     asset_count: num(r.asset_count),
-    job_count: num(r.job_count),
-    is_favorite: bool(r.is_favorite) ?? false,
-    is_archived: bool(r.is_archived) ?? false,
+    // The project row has a `status`, not job counts or flags. A job count would
+    // need a query this payload does not make, so it is not invented here.
+    job_count: null,
+    is_favorite: false,
+    is_archived: str(r.status) === 'archived',
     created_at: str(r.created_at) ?? '',
     updated_at: str(r.updated_at) ?? undefined,
   };
@@ -327,21 +400,27 @@ function readPreset(raw: unknown): Preset {
   const r = isRecord(raw) ? raw : {};
   return {
     id: str(r.id) ?? '',
-    workspace_id: str(r.workspace_id) ?? '',
+    // One shape for catalogue and saved presets: `slug` is the dataset key,
+    // `kind` is the modality, `defaults` holds the settings, `camera_settings`
+    // the move. The reader used to look for `key`, `modality`, `parameters` and
+    // `camera`, none of which any route sends.
+    key: str(r.slug),
+    is_builtin: bool(r.is_builtin) ?? false,
+    workspace_id: str(r.workspace_id),
     name: str(r.name) ?? 'Untitled preset',
     description: str(r.description),
-    modality: str(r.modality) ?? 'image',
+    modality: str(r.kind) ?? 'image',
     category: str(r.category),
     prompt_template: str(r.prompt_template),
     negative_prompt_template: str(r.negative_prompt_template),
-    aspect_ratio: str(r.aspect_ratio),
-    model_preference: str(r.model_preference),
-    parameters: isRecord(r.parameters) ? r.parameters : null,
-    camera: isRecord(r.camera) ? r.camera : null,
+    aspect_ratio: isRecord(r.defaults) ? str(r.defaults.aspect_ratio) : null,
+    model_preference: null,
+    parameters: isRecord(r.defaults) ? r.defaults : null,
+    camera: isRecord(r.camera_settings) ? r.camera_settings : null,
     notes: str(r.notes),
     thumbnail_url: str(r.thumbnail_url),
-    is_favorite: bool(r.is_favorite) ?? false,
-    created_at: str(r.created_at) ?? '',
+    is_favorite: false,
+    created_at: str(r.created_at),
     updated_at: str(r.updated_at) ?? undefined,
   };
 }
@@ -351,13 +430,16 @@ function readPrompt(raw: unknown): PromptRecord {
   return {
     id: str(r.id) ?? '',
     workspace_id: str(r.workspace_id) ?? undefined,
-    text: str(r.text) ?? '',
+    // A saved prompt is stored as `body` / `negative_body` and counts its uses in
+    // `use_count`; the reader used to ask for `text`, `negative_prompt` and
+    // `usage_count`, so the library showed empty prompts and zero uses.
+    text: str(r.body) ?? '',
     title: str(r.title),
-    negative_prompt: str(r.negative_prompt),
-    model_id: str(r.model_id),
+    negative_prompt: str(r.negative_body),
+    model_id: null,
     tags: strList(r.tags).length ? strList(r.tags) : null,
     variables: isRecord(r.variables) ? r.variables : null,
-    usage_count: num(r.usage_count),
+    usage_count: num(r.use_count),
     created_at: str(r.created_at) ?? '',
     updated_at: str(r.updated_at) ?? undefined,
   };
@@ -378,10 +460,14 @@ function readCharacter(raw: unknown): Character {
     name: str(r.name) ?? 'Unnamed character',
     description: str(r.description),
     attributes: Object.keys(attributes).length ? attributes : null,
-    default_prompt: str(r.default_prompt),
-    preferred_model_id: str(r.preferred_model_id),
+    default_prompt: isRecord(r.prompt_details) ? str(r.prompt_details.default_prompt) : null,
+    preferred_model_id: strList(r.preferred_models)[0] ?? null,
     tags: strList(r.tags).length ? strList(r.tags) : null,
-    reference_asset_ids: strList(r.reference_asset_ids).length ? strList(r.reference_asset_ids) : null,
+    reference_asset_ids:
+      arr(r.references)
+        .filter(isRecord)
+        .map((reference) => str(reference.asset_id) ?? '')
+        .filter((value) => value.length > 0) || null,
     reference_count: num(r.reference_count),
     created_at: str(r.created_at) ?? '',
     updated_at: str(r.updated_at) ?? undefined,
@@ -699,7 +785,8 @@ export const jobs = {
     const payload = await apiRequest<unknown>('/api/jobs', {
       signal,
       query: {
-        state: filters.state,
+        // The screen filters by state; the API filters by status.
+        state: jobStatusFromState(filters.state),
         modality: filters.modality,
         project_id: filters.project_id,
         model_id: filters.model_id,
@@ -725,7 +812,7 @@ export const jobs = {
       return {
         id: str(r.id) ?? '',
         kind: str(r.kind) ?? '',
-        state: str(r.state),
+        state: jobStateFromStatus(r.state ?? r.status),
         message: str(r.message),
         detail: r.detail ?? null,
         created_at: str(r.created_at) ?? '',
@@ -853,6 +940,70 @@ export const assets = {
 
 /* ---------------------------------------------------------------- library */
 
+/* ------------------------------------------------ write bodies: view -> wire */
+/* A form is written against the view model, which is the shape a screen reads.
+   The create and patch routes accept the *stored* names, and refuse an unknown
+   key by name rather than ignoring it. These three functions are the one place
+   the two are reconciled; every write goes through one of them. */
+
+function presetBody(input: Partial<Preset> & { name?: string; modality?: string }): Record<string, unknown> {
+  const body: Record<string, unknown> = {};
+  if (input.name !== undefined) body.name = input.name;
+  if (input.modality !== undefined) body.kind = input.modality;
+  if (input.description !== undefined) body.description = input.description;
+  if (input.category !== undefined) body.category = input.category;
+  if (input.prompt_template !== undefined) body.prompt_template = input.prompt_template;
+  if (input.negative_prompt_template !== undefined) body.negative_prompt_template = input.negative_prompt_template;
+  // The frame a look was designed for is a property of the preset, and the row
+  // has nowhere to put it except `defaults`. Folding it in here keeps the built-in
+  // catalogue (which does the same on the server) and a saved preset identical.
+  if (input.parameters !== undefined || input.aspect_ratio !== undefined) {
+    const defaults: Record<string, unknown> = { ...(input.parameters ?? {}) };
+    if (input.aspect_ratio) defaults.aspect_ratio = input.aspect_ratio;
+    body.defaults = defaults;
+  }
+  if (input.camera !== undefined) body.camera_settings = input.camera;
+  if (input.tags !== undefined) body.tags = input.tags;
+  if (input.thumbnail_url !== undefined) body.thumbnail_url = input.thumbnail_url;
+  return body;
+}
+
+function promptBody(input: {
+  text?: string | null;
+  title?: string | null;
+  negative_prompt?: string | null;
+  tags?: string[] | null;
+  variables?: Record<string, unknown> | null;
+}): Record<string, unknown> {
+  const body: Record<string, unknown> = {};
+  if (input.title !== undefined) body.title = input.title;
+  if (input.text !== undefined) body.body = input.text;
+  if (input.negative_prompt !== undefined) body.negative_body = input.negative_prompt;
+  if (input.tags !== undefined) body.tags = input.tags;
+  if (input.variables !== undefined) body.variables = input.variables;
+  return body;
+}
+
+function characterBody(input: {
+  name?: string;
+  description?: string | null;
+  attributes?: Record<string, string> | null;
+  default_prompt?: string | null;
+  preferred_model_id?: string | null;
+  tags?: string[] | null;
+}): Record<string, unknown> {
+  const body: Record<string, unknown> = {};
+  if (input.name !== undefined) body.name = input.name;
+  if (input.description !== undefined) body.description = input.description;
+  if (input.attributes !== undefined) body.attributes = input.attributes;
+  if (input.tags !== undefined) body.tags = input.tags;
+  if (input.default_prompt !== undefined) body.prompt_details = { default_prompt: input.default_prompt };
+  if (input.preferred_model_id !== undefined) {
+    body.preferred_models = input.preferred_model_id ? [input.preferred_model_id] : [];
+  }
+  return body;
+}
+
 export const presets = {
   async list(
     filters: { modality?: string; category?: string; q?: string } = {},
@@ -865,7 +1016,7 @@ export const presets = {
     return arr(envelope(payload, 'presets')).map(readPreset);
   },
   async create(input: Partial<Preset> & { name: string; modality: string }): Promise<Preset> {
-    const payload = await apiRequest<unknown>('/api/presets', { method: 'POST', body: input });
+    const payload = await apiRequest<unknown>('/api/presets', { method: 'POST', body: presetBody(input) });
     return readPreset(envelope(payload, 'preset'));
   },
   async get(id: string, signal?: AbortSignal): Promise<Preset> {
@@ -875,7 +1026,7 @@ export const presets = {
   async patch(id: string, input: Partial<Preset>): Promise<Preset> {
     const payload = await apiRequest<unknown>(`/api/presets/${encodeURIComponent(id)}`, {
       method: 'PATCH',
-      body: input,
+      body: presetBody(input),
     });
     return readPreset(envelope(payload, 'preset'));
   },
@@ -910,13 +1061,13 @@ export const prompts = {
     tags?: string[];
     variables?: Record<string, unknown>;
   }): Promise<PromptRecord> {
-    const payload = await apiRequest<unknown>('/api/prompts', { method: 'POST', body: input });
+    const payload = await apiRequest<unknown>('/api/prompts', { method: 'POST', body: promptBody(input) });
     return readPrompt(envelope(payload, 'prompt'));
   },
   async patch(id: string, input: Partial<PromptRecord>): Promise<PromptRecord> {
     const payload = await apiRequest<unknown>(`/api/prompts/${encodeURIComponent(id)}`, {
       method: 'PATCH',
-      body: input,
+      body: promptBody(input),
     });
     return readPrompt(envelope(payload, 'prompt'));
   },
@@ -939,8 +1090,20 @@ export const characters = {
     tags?: string[];
     reference_asset_ids?: string[];
   }): Promise<Character> {
-    const payload = await apiRequest<unknown>('/api/characters', { method: 'POST', body: input });
-    return readCharacter(envelope(payload, 'character'));
+    const payload = await apiRequest<unknown>('/api/characters', {
+      method: 'POST',
+      body: characterBody(input),
+    });
+    const created = readCharacter(envelope(payload, 'character'));
+    // References are their own route: the create body takes a character, not a
+    // gallery, and sending them here would be refused as an unknown field.
+    for (const assetId of input.reference_asset_ids ?? []) {
+      await apiRequest<unknown>(`/api/characters/${encodeURIComponent(created.id)}/references`, {
+        method: 'POST',
+        body: { asset_id: assetId, role: 'reference' },
+      });
+    }
+    return created;
   },
   async get(
     id: string,
@@ -957,7 +1120,7 @@ export const characters = {
   async patch(id: string, input: Partial<Character>): Promise<Character> {
     const payload = await apiRequest<unknown>(`/api/characters/${encodeURIComponent(id)}`, {
       method: 'PATCH',
-      body: input,
+      body: characterBody(input),
     });
     return readCharacter(envelope(payload, 'character'));
   },
@@ -979,18 +1142,26 @@ export const usage = {
     return {
       usage: arr(envelope(payload, 'usage')).map((raw) => {
         const r = isRecord(raw) ? raw : {};
+        // A usage row records what a provider charged: `actual_cost` when it
+        // reported one, `estimated_cost` when it did not, and `units` for the
+        // count. The reader used to ask for `quantity`, `unit`, `is_estimate`
+        // and `is_billable`, which the row does not carry.
+        const actual = num(r.actual_cost);
+        const estimated = num(r.estimated_cost);
         return {
           id: str(r.id) ?? '',
           job_id: str(r.job_id),
-          kind: str(r.kind) ?? '',
+          kind: str(r.modality) ?? '',
           model_id: str(r.model_id),
-          provider: str(r.provider),
-          quantity: num(r.quantity) ?? 0,
-          unit: str(r.unit) ?? 'request',
-          is_estimate: bool(r.is_estimate) ?? false,
-          is_billable: bool(r.is_billable) ?? false,
-          note: str(r.note),
+          provider: str(r.billing_party),
+          quantity: num(r.units) ?? 0,
+          unit: 'request',
+          is_estimate: actual === null && estimated !== null,
+          is_billable: actual !== null,
+          note: null,
           created_at: str(r.created_at) ?? '',
+          actual_cost: actual,
+          estimated_cost: estimated,
         };
       }),
       billing: readBilling(isRecord(payload) ? payload.billing : null),
@@ -1068,5 +1239,210 @@ export const assistant = {
           message: 'The prompt assistant did not answer.',
           hint: 'Check that the server is running, then try again.',
         });
+  },
+};
+
+/* ------------------------------------------------------------- prompt layer */
+/* The layer dataset, served by the same application as everything else. These
+   readers only coerce; the server decides what is active, what a layer is, and
+   which parameter switches it off. */
+
+function readPromptParamSpecs(raw: unknown): Record<string, PromptParamSpec> {
+  const source = isRecord(raw) ? raw : {};
+  const out: Record<string, PromptParamSpec> = {};
+  for (const [name, value] of Object.entries(source)) {
+    const spec = isRecord(value) ? value : {};
+    out[name] = {
+      default: spec.default,
+      options: Array.isArray(spec.options) ? spec.options.map((item) => String(item)) : null,
+    };
+  }
+  return out;
+}
+
+function readPromptLayer(raw: unknown): PromptLayerFact {
+  const r = isRecord(raw) ? raw : {};
+  const disable = isRecord(r.disable_with) ? r.disable_with : null;
+  const override = isRecord(r.your_override) ? r.your_override : null;
+  return {
+    id: str(r.id) ?? '',
+    kind: str(r.kind) ?? 'unknown',
+    active: bool(r.active) ?? false,
+    detail: str(r.detail) ?? '',
+    disable_with: disable,
+    source: str(r.source) ?? '',
+    evidence: str(r.evidence) ?? null,
+    your_override: override,
+  };
+}
+
+function readPromptSummary(raw: unknown): PromptModelSummary {
+  const r = isRecord(raw) ? raw : {};
+  return {
+    slug: str(r.slug) ?? '',
+    display: str(r.display) ?? str(r.slug) ?? 'Unnamed model',
+    provider: str(r.provider) ?? '',
+    kind: str(r.kind) ?? 'image',
+    accepts_image: bool(r.accepts_image) ?? false,
+    layer_count: num(r.layer_count) ?? 0,
+    active_layer_count: num(r.active_layer_count) ?? 0,
+  };
+}
+
+function readPromptModel(raw: unknown): PromptModel {
+  const r = isRecord(raw) ? raw : {};
+  return {
+    ...readPromptSummary(raw),
+    endpoint: str(r.endpoint) ?? '',
+    params: readPromptParamSpecs(r.params),
+    layers: arr(r.layers).map(readPromptLayer),
+    sources: strList(r.sources),
+  };
+}
+
+function readCatalogModel(raw: unknown): PromptCatalogModel | null {
+  if (!isRecord(raw)) return null;
+  return {
+    slug: str(raw.slug) ?? '',
+    display: str(raw.display) ?? str(raw.slug) ?? 'Unnamed model',
+    kind: str(raw.kind) ?? 'image',
+    layer_count: num(raw.layer_count) ?? 0,
+    active_layer_count: num(raw.active_layer_count) ?? 0,
+    params: readPromptParamSpecs(raw.params),
+    layers: arr(raw.layers).map(readPromptLayer),
+  };
+}
+
+function readCatalogEntry(raw: unknown): PromptCatalogEntry {
+  const r = isRecord(raw) ? raw : {};
+  return {
+    endpoint: str(r.endpoint) ?? '',
+    display: str(r.display) ?? str(r.endpoint) ?? 'Unnamed endpoint',
+    modality: str(r.modality) ?? 'image',
+    modes: strList(r.modes),
+    aspect_ratios: strList(r.aspect_ratios),
+    resolutions: strList(r.resolutions),
+    durations_seconds: arr(r.durations_seconds).filter((item): item is number => typeof item === 'number'),
+    max_outputs: num(r.max_outputs) ?? 1,
+    supports_negative_prompt: bool(r.supports_negative_prompt) ?? false,
+    supports_seed: bool(r.supports_seed) ?? false,
+    restrictions: strList(r.restrictions),
+    notes: strList(r.notes),
+    prompt_model: readCatalogModel(r.prompt_model),
+  };
+}
+
+function readPreflightParams(raw: unknown): Record<string, PreflightParam> {
+  const source = isRecord(raw) ? raw : {};
+  const out: Record<string, PreflightParam> = {};
+  for (const [name, value] of Object.entries(source)) {
+    const item = isRecord(value) ? value : {};
+    out[name] = {
+      value: item.value,
+      source: str(item.source) ?? 'unknown',
+      provider_default: item.provider_default,
+    };
+  }
+  return out;
+}
+
+export function readPreflight(raw: unknown): PromptPreflight {
+  const r = isRecord(raw) ? raw : {};
+  const forwarded = isRecord(r.prompt) ? r.prompt : {};
+  const estimate = isRecord(r.estimate) ? r.estimate : {};
+  return {
+    model: str(r.model) ?? '',
+    display: str(r.display) ?? str(r.model) ?? '',
+    provider: str(r.provider) ?? '',
+    endpoint: str(r.endpoint) ?? '',
+    unknown_model: bool(r.unknown_model) ?? false,
+    known_model: bool(r.known_model) ?? false,
+    prompt: {
+      original: str(forwarded.original) ?? '',
+      forwarded_as: str(forwarded.forwarded_as) ?? '',
+      rewritten_upstream: bool(forwarded.rewritten_upstream) ?? false,
+      image_count: num(forwarded.image_count) ?? 0,
+    },
+    messages: Array.isArray(r.messages)
+      ? r.messages.filter(isRecord).map((item) => ({
+          role: str(item.role) ?? '',
+          content: str(item.content) ?? '',
+        }))
+      : null,
+    params: readPreflightParams(r.params),
+    layers: arr(r.layers).map(readPromptLayer),
+    conditional_layers: arr(r.conditional_layers).filter(isRecord).map(
+      (item): PromptConditionalLayer => ({
+        id: str(item.id) ?? '',
+        kind: str(item.kind) ?? '',
+        applies_to: str(item.applies_to) ?? '',
+        scope: str(item.scope),
+        detail: str(item.detail) ?? '',
+        source: str(item.source) ?? '',
+      }),
+    ),
+    warnings: strList(r.warnings),
+    full_control_patch: isRecord(r.full_control_patch) ? r.full_control_patch : {},
+    estimate: {
+      prompt_tokens: num(estimate.prompt_tokens) ?? 0,
+      added_chars: num(estimate.added_chars) ?? 0,
+      note: str(estimate.note) ?? '',
+    },
+    supports_compile: bool(r.supports_compile) ?? false,
+    compile_styles: strList(r.compile_styles),
+    version: str(r.version) ?? '',
+  };
+}
+
+export const prompt = {
+  async models(kind?: string, signal?: AbortSignal): Promise<{ models: PromptModelSummary[]; datasetVersion: string }> {
+    const payload = await apiRequest<unknown>('/api/prompt/models', { signal, query: { kind } });
+    return {
+      models: arr(envelope(payload, 'models')).map(readPromptSummary),
+      datasetVersion: str(isRecord(payload) ? payload.dataset_version : null) ?? '',
+    };
+  },
+  async modes(signal?: AbortSignal): Promise<ModeVocabulary> {
+    const payload = await apiRequest<unknown>('/api/prompt/modes', { signal });
+    const record = isRecord(payload) ? payload : {};
+    const labels: Record<string, string> = {};
+    if (isRecord(record.labels)) {
+      for (const [key, value] of Object.entries(record.labels)) labels[key] = String(value);
+    }
+    return { image: strList(record.image), video: strList(record.video), labels };
+  },
+  async model(slug: string, signal?: AbortSignal): Promise<PromptModel> {
+    const payload = await apiRequest<unknown>(`/api/prompt/models/${encodeURIComponent(slug)}`, { signal });
+    return readPromptModel(envelope(payload, 'model'));
+  },
+  async catalog(
+    modality?: string,
+    signal?: AbortSignal,
+  ): Promise<{ endpoints: PromptCatalogEntry[]; documented: number; undocumented: number; source: string }> {
+    const payload = await apiRequest<unknown>('/api/prompt/catalog', { signal, query: { modality } });
+    const record = isRecord(payload) ? payload : {};
+    return {
+      endpoints: arr(envelope(payload, 'endpoints')).map(readCatalogEntry),
+      documented: num(record.documented) ?? 0,
+      undocumented: num(record.undocumented) ?? 0,
+      source: str(record.source) ?? '',
+    };
+  },
+  async preflight(
+    input: {
+      model: string;
+      prompt: string;
+      options?: Record<string, unknown>;
+      system_message?: string;
+      image_count?: number;
+    },
+    signal?: AbortSignal,
+  ): Promise<PromptPreflight> {
+    const payload = await apiRequest<unknown>('/api/prompt/preflight', {
+      method: 'POST',
+      body: input,
+      signal,
+    });
+    return readPreflight(envelope(payload, 'preflight'));
   },
 };

@@ -100,6 +100,23 @@ def model_list() -> List[Dict[str, Any]]:
     return out
 
 
+def endpoint_index() -> Dict[str, str]:
+    """Map a provider endpoint identifier to the slug that describes it.
+
+    The layer dataset keys by a short slug (`seedream-v4`); a connection
+    registers a model by the provider's own endpoint id
+    (`fal-ai/bytedance/seedream/v4/text-to-image`). This is the join between the
+    two, so the studio can say what a registered model will do to a prompt
+    without the user restating which dataset entry it is.
+    """
+    out: Dict[str, str] = {}
+    for slug, model in _load()["models"].items():
+        endpoint = str(model.get("endpoint") or "").strip()
+        if endpoint:
+            out[endpoint] = slug
+    return out
+
+
 def _estimate_tokens(text: str) -> int:
     return max(1, round(len(text) / CHARS_PER_TOKEN))
 

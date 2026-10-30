@@ -138,7 +138,7 @@ def test_a_function_keeps_what_it_reads_at_runtime():
     """
     #: What each function reads at runtime, and therefore must ship with it.
     required = {
-        "api/studio.py": ("studio/**", "web/dist/**"),
+        "api/studio.py": ("studio/**", "web/dist/**", "promptlayer/**"),
         "api/studio_cron.py": ("studio/**",),
         "api/compile.py": ("promptlayer/**",),
         "api/preflight.py": ("promptlayer/**",),
@@ -164,6 +164,36 @@ def test_a_function_keeps_what_it_reads_at_runtime():
                 f"{name} reads {need} at runtime but its excludeFiles removes "
                 f"it, so the deployed function would 404"
             )
+
+
+def test_the_root_serves_one_application_and_not_a_second_page():
+    """There is one product, so there is one front door.
+
+    The repository used to ship two: a static preflight page at `/` and the
+    React studio at `/studio`. They shared a dataset but not a session, a
+    navigation or a model registry, and the static page's tools were invisible
+    from the studio. The page is gone and every path that is not the API is a
+    request for the built client, which is the same application the API belongs
+    to. A second page reappearing at the root is a regression, not a feature.
+    """
+    assert not os.path.exists(os.path.join(REPO, "index.html")), (
+        "index.html is a second front door; the product is the React app in web/dist"
+    )
+
+    rewrites = json.loads(_read("vercel.json"))["rewrites"]
+    sources = [entry["source"] for entry in rewrites]
+    assert "/((?!api/).*)" in sources, (
+        "every non-API path must reach the application that serves the client"
+    )
+    catch_all = next(entry for entry in rewrites if entry["source"] == "/((?!api/).*)")
+    assert catch_all["destination"] == "/api/studio"
+
+    # The function that serves the page also serves the layer dataset now, so it
+    # has to ship the package rather than being told to exclude it.
+    excluded = json.loads(_read("vercel.json"))["functions"]["api/studio.py"]["excludeFiles"]
+    assert "promptlayer/**" not in excluded, (
+        "the studio function reads promptlayer/ for the Prompt Lab routes"
+    )
 
 
 def test_the_studio_client_is_committed_because_the_deployment_has_no_build_step():

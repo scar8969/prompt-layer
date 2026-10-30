@@ -11,6 +11,7 @@ import { DestructiveAction } from '../../components/Confirm.tsx';
 import { Switch } from '../../components/Controls.tsx';
 import { Link, useRouter } from '../../app/router.tsx';
 import { useModel, useModelCapabilities, useModelParameters } from '../../state/models.ts';
+import { useModeVocabulary, usePromptCatalog } from '../../state/promptLayer.ts';
 import { invalidate } from '../../state/query.ts';
 import { useToasts } from '../../state/toasts.tsx';
 import { formatDateTime, titleCase } from '../../lib/util.ts';
@@ -70,8 +71,18 @@ export function ModelDetailScreen({ modelId }: { modelId: string }) {
     navigate('/models');
   };
 
-  const allModes = ['generate', 'variations', 'edit', 'inpaint', 'outpaint', 'extend', 'transform', 'upscale'];
+  // The vocabulary comes from the service that validates the PATCH, not from a
+  // second list kept in this file: three of the names this form used to offer
+  // (`generate`, `edit`, `transform`) were rejected on save.
+  const vocabulary = useModeVocabulary();
+  const allModes = (record.modality === 'video' ? vocabulary.data?.video : vocabulary.data?.image) ?? [];
   const declared = new Set(record.modes);
+
+  // What this model does to a prompt, when a document in this repository
+  // describes its endpoint. The join is the endpoint id, so it survives a model
+  // registered by hand against a documented endpoint.
+  const catalog = usePromptCatalog();
+  const promptFacts = (catalog.data?.endpoints ?? []).find((entry) => entry.endpoint === record.model_key) ?? null;
 
   return (
     <div className="page page--wide">
@@ -360,6 +371,81 @@ export function ModelDetailScreen({ modelId }: { modelId: string }) {
             </div>
           );
         })()}
+      </Section>
+
+      <Section
+        title="What this model does to your prompt"
+        description="Read from the layer dataset, joined on the endpoint identifier. No entry here means no document in this repository describes the endpoint — a gap in what we know, not a promise that the provider adds nothing."
+        actions={
+          promptFacts?.prompt_model ? (
+            <Link
+              to={`/prompt?model=${encodeURIComponent(promptFacts.prompt_model.slug)}`}
+              className="btn btn--sm"
+            >
+              Open in Prompt Lab
+            </Link>
+          ) : null
+        }
+      >
+        {catalog.loading ? <p className="muted" style={{ margin: 0 }}>Reading the layer dataset…</p> : null}
+        {catalog.error ? <ErrorNotice error={catalog.error} onRetry={catalog.reload} /> : null}
+        {catalog.data && !promptFacts ? (
+          <p className="muted" style={{ margin: 0 }}>
+            <span className="mono">{record.model_key}</span> is not in the documented catalogue. The Prompt Lab will
+            assemble the generic layers for it and say they are unconfirmed.
+          </p>
+        ) : null}
+        {promptFacts && !promptFacts.prompt_model ? (
+          <p className="muted" style={{ margin: 0 }}>
+            The endpoint is in the catalogue, but no layer document covers its prompt behaviour. The studio will not
+            guess: preflight reports this endpoint as undocumented.
+          </p>
+        ) : null}
+        {promptFacts?.prompt_model ? (
+          <div className="stack stack--tight">
+            <KeyValueList
+              rows={[
+                {
+                  key: 'Documented layers',
+                  value: `${promptFacts.prompt_model.active_layer_count} active of ${promptFacts.prompt_model.layer_count}`,
+                },
+                { key: 'Dataset entry', value: <span className="mono">{promptFacts.prompt_model.slug}</span> },
+                { key: 'Endpoint', value: <span className="mono">{promptFacts.endpoint}</span> },
+              ]}
+            />
+            {promptFacts.prompt_model.layers.map((layer) => (
+              <div className="card card--sunken" key={layer.id} style={{ display: 'grid', gap: 4 }}>
+                <div className="row row--tight" style={{ flexWrap: 'wrap' }}>
+                  <Badge tone={layer.active ? 'warn' : 'plain'}>{layer.active ? layer.kind : `off · ${layer.kind}`}</Badge>
+                  <span className="mono" style={{ fontSize: 'var(--fs-xs)' }}>
+                    {layer.id}
+                  </span>
+                </div>
+                <p style={{ margin: 0 }}>{layer.detail}</p>
+                {layer.disable_with ? (
+                  <p className="field__hint" style={{ margin: 0 }}>
+                    Off switch:{' '}
+                    <span className="mono">
+                      {Object.entries(layer.disable_with)
+                        .map(([key, value]) => `${key}=${JSON.stringify(value)}`)
+                        .join(', ')}
+                    </span>
+                  </p>
+                ) : null}
+              </div>
+            ))}
+            {promptFacts.restrictions.length ? (
+              <div className="panel panel--warn">
+                <p className="panel__title">Restrictions this endpoint documents</p>
+                <ul style={{ margin: 0, paddingLeft: 18 }}>
+                  {promptFacts.restrictions.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </Section>
 
       <Section title="Raw records">

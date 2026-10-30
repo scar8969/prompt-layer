@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   assets as assetsApi,
   assistant,
@@ -50,7 +50,7 @@ export function GenerationStudio({ kind }: { kind: StudioKind }) {
   const { model: preferred } = useDefaultModelId();
   const settings = useSettings();
   const toasts = useToasts();
-  const { navigate } = useRouter();
+  const { route, navigate } = useRouter();
 
   const [modelId, setModelId] = useState<string | null>(null);
   const [mode, setMode] = useState<string | null>(null);
@@ -76,9 +76,32 @@ export function GenerationStudio({ kind }: { kind: StudioKind }) {
   // Below 1280px the right-hand inspector becomes a drawer, so its controls stay
   // reachable rather than silently disappearing.
   const [inspectorOpen, setInspectorOpen] = useState(false);
+  // A preset applied while its model (and therefore its parameter schema) is
+  // still resolving: the filter has to run again once the schema is known.
+  const pendingPresetParameters = useRef<Record<string, unknown> | null>(null);
+  const appliedDeepLinkPreset = useRef(false);
 
   const capabilities = useModelCapabilities(modelId);
   const schema = useModelParameters(modelId);
+
+  // The parameter names the selected model declares. A preset carries the
+  // settings of the look it describes, and those are not automatically settings
+  // this model accepts: the backend refuses a parameter the model does not
+  // declare, so an unfiltered preset was a 400 instead of a generation.
+  const declaredParameterNames = useMemo(
+    () => new Set((schema.data?.schema.parameters ?? []).map((spec) => spec.name)),
+    [schema.data],
+  );
+
+  const filterPresetParameters = (raw: Record<string, unknown> | null | undefined) => {
+    const kept: Record<string, unknown> = {};
+    const dropped: string[] = [];
+    for (const [name, value] of Object.entries(raw ?? {})) {
+      if (declaredParameterNames.has(name)) kept[name] = value;
+      else dropped.push(name);
+    }
+    return { kept, dropped };
+  };
   const eligible = useMemo(
     () => (models.data ?? []).filter((model) => model.modality === kind),
     [models.data, kind],
@@ -141,7 +164,13 @@ export function GenerationStudio({ kind }: { kind: StudioKind }) {
     if (preset.prompt_template) setPrompt(preset.prompt_template);
     if (preset.negative_prompt_template && supportsNegative) setNegativePrompt(preset.negative_prompt_template);
     if (preset.aspect_ratio) setAspectRatio(preset.aspect_ratio);
-    if (preset.parameters) setParameters({ ...preset.parameters });
+    let dropped: string[] = [];
+    if (preset.parameters) {
+      const filtered = filterPresetParameters(preset.parameters);
+      dropped = filtered.dropped;
+      pendingPresetParameters.current = preset.parameters;
+      setParameters(filtered.kept);
+    }
     if (preset.model_preference) {
       const match = eligible.find(
         (item) => item.id === preset.model_preference || item.model_key === preset.model_preference,
@@ -151,9 +180,32 @@ export function GenerationStudio({ kind }: { kind: StudioKind }) {
     toasts.push({
       tone: 'info',
       title: `Preset "${preset.name}" applied`,
-      text: 'Review the prompt and parameters before you submit.',
+      text: dropped.length
+        ? `Review before submitting. This model does not declare ${dropped.join(', ')}, so those settings were left out.`
+        : 'Review the prompt and parameters before you submit.',
     });
   };
+
+  // Re-filter once the schema for the model this preset switched to arrives.
+  useEffect(() => {
+    const pending = pendingPresetParameters.current;
+    if (!pending || !schema.data) return;
+    setParameters(filterPresetParameters(pending).kept);
+    pendingPresetParameters.current = null;
+  }, [modelId, schema.data]);
+
+  // `/image?preset=<id>` is how the preset library hands a look to a studio, so
+  // one click from the gallery lands on a form that is ready to submit.
+  const requestedPreset = route.params.get('preset');
+  useEffect(() => {
+    if (!requestedPreset || appliedDeepLinkPreset.current) return;
+    const found = (presets.data ?? []).find((item) => item.id === requestedPreset);
+    if (!found) return;
+    appliedDeepLinkPreset.current = true;
+    applyPreset(found);
+    // Drop the query so a reload does not reapply the preset over edited fields.
+    navigate(`/${kind}`, { replace: true });
+  }, [requestedPreset, presets.data, kind, navigate]);
 
   const { job, error: watchError } = useJobWatch(submitted);
 

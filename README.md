@@ -1,30 +1,33 @@
-# Prompt Layer & Studio
+# Prompt Layer
 
-This repository holds two products:
+**Generate on any model with your own key — and see exactly what that model does to
+your prompt, before you spend anything.**
 
-- **Prompt Layer** (`api/`, `index.html`, `promptlayer/`) — the preflight /
-  improve / video / compile tools. Preflight for what a model provider
-  adds to your prompt before you pay for it.
-- **Studio** (`studio/`, `web/`) — a sibling BYOK image and video
-  creative platform. Register, queue real generations, store the
-  artifact, build a library of prompts and characters.
+One application. This repository used to ship two products: a static preflight
+page at `/` and a BYOK studio at `/studio`. They shared a dataset but not a
+session, a navigation or a model registry, so the question the first one answered
+was invisible from the screen where the prompt actually ran. They are merged:
 
-They are siblings, not layers of each other. Per `docs/PLAN.md`:
+| Surface | What it is |
+|---|---|
+| **Prompt Lab** (`/prompt`) | The layer dataset, inside the app. Pick a documented model, paste a prompt, read the payload that reaches the provider, and the parameter that turns each additive layer off. |
+| **Image Studio / Video Studio** (`/image`, `/video`) | Preset gallery, model picker, camera moves, references, queue → artifact. |
+| **API Connections** (`/connections`) | Bring your own key. Pick a documented endpoint from the catalogue, paste the key, and the model is registered with the modes and controls the provider really has. |
+| **Models** (`/models/:id`) | One model: declared capabilities, parameter schema, and the prompt layers documented for its endpoint. |
 
-> Studio is the AI image and video creative platform in this repository.
-> It is a sibling of Prompt Layer, not a replacement: Prompt Layer stays
-> exactly as it is.
+One process serves the API and the built client on one origin:
 
-Read the section you need:
+```
+python -m studio.app --port 8091     # http://127.0.0.1:8091/
+```
 
-- [Prompt Layer](#prompt-layer) — the preflight tool, the dataset, the
-  Vercel deployment.
-- [Studio](#studio) — the BYOK platform, the SQLite schema, the
-  container deployment.
+`docs/SETUP.md` is the setup guide, `docs/PLAN.md` the design decisions,
+`docs/API.md` the route table, `docs/DEPLOYMENT.md` the deployment, and
+`CHANGELOG.md` the merge itself.
 
 ---
 
-# Prompt Layer
+# The prompt layer dataset
 
 **See what a model provider adds to your prompt before you pay for it — then choose.**
 
@@ -447,7 +450,9 @@ than on Vercel.
 
 `vercel.json` sets memory and a timeout per function, and excludes the tests from
 the bundle. It does not need `includeFiles`: Python functions bundle every project
-file reachable at build time, so `promptlayer/` ships with them automatically.
+file reachable at build time. `api/studio.py` no longer excludes `promptlayer/`,
+because the Prompt Lab routes import it; `tests/test_deploy.py` asserts that, and
+also asserts that nothing is served at the root except the one application.
 
 Compile stays dry-run-only unless you set **all three** of
 `ALLOW_REMOTE_COMPILE=1`, `COMPILE_GATEWAY_URL`, `COMPILE_API_KEY`. That opt-in is
@@ -462,8 +467,14 @@ Until then `/api/video` returns the exact requests and spends nothing.
 ## Layout
 
 ```
-index.html            the app (no build step, no framework)
-api/health.py         \  Vercel Python functions — each exports `handler`
+web/                  the application: React 19 + TypeScript + Vite
+web/dist/             the built client, committed because the deployment has no build step
+studio/               the server: routes, services, adapters, storage, migrations
+studio/routes/        one module per route group, including prompt.py (the layer dataset)
+api/studio.py         the single Vercel function: the API and the page
+api/health.py         \  the prompt-layer JSON endpoints, kept for programmatic use
+api/models.py          |  (the Prompt Lab screen reads the dataset through
+api/presets.py         |  studio/routes/prompt.py, not through these)
 api/models.py          |
 api/presets.py         |
 api/preflight.py       |
@@ -548,15 +559,14 @@ Built as a [tokN](https://tokn.co.in) tool.
 information, condensed, and `docs/PLAN.md` explains why each piece is
 shaped the way it is.
 
-## What is Studio
+## What the studio is
 
-Studio is a sibling of Prompt Layer, not a replacement. Prompt Layer
-stays exactly as it is. Studio is what the four tools cannot do:
-keep your own credential, queue a real generation against a real
-provider, store the artifact, and build up a library of prompts,
-presets and characters you can re-use. The dataset-driven UI in
-Prompt Layer above still answers "what does this endpoint add to my
-prompt?"; Studio is the place that prompt runs against.
+The studio is the product: one session, one navigation, one model registry. It
+keeps your own credential, queues a real generation against a real provider,
+stores the artifact, and builds a library of prompts, presets and characters you
+can re-use. The layer dataset is part of it — Prompt Lab answers "what does this
+endpoint add to my prompt?", the model inspector repeats the answer for a
+registered model, and the studios are where that prompt runs.
 
 ## Stack
 

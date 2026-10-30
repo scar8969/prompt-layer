@@ -47,10 +47,10 @@ for path in ("/api/preflight", "/api/improve", "/api/compile"):
     status, _ = call("GET", path)
     ok(f"GET {path} -> 501 (POST-only, no do_GET)", status == 501, status)
 
-print("== index.html is served, and only it ==")
+print("== the application is served at the root ==")
 status, html = call("GET", "/", raw=True)
 ok("GET / -> 200 html", status == 200 and "<html" in html.lower(), status)
-ok("GET /dev.py -> 404 (allowlist, not a file server)", call("GET", "/dev.py")[0] == 404)
+ok("GET /dev.py -> 404 (never a file server)", call("GET", "/dev.py")[0] == 404)
 
 print("== models payload carries the new indexes ==")
 _, models = call("GET", "/api/models")

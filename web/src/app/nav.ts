@@ -1,5 +1,10 @@
-// The eleven surfaces of the studio. Every entry is a real screen; none of them
-// is a placeholder. The icon name indexes into components/Icon.tsx.
+// The studio's surfaces. Every entry is a real screen; none of them is a
+// placeholder. The icon name indexes into components/Icon.tsx.
+//
+// Prompt Lab sits with the creation surfaces rather than in a second product:
+// the layer dataset is part of this application, not a sibling site, and the
+// question it answers ("what will this model do to my prompt?") belongs next to
+// the button that spends the money.
 
 export interface NavEntry {
   id: string;
@@ -18,6 +23,14 @@ export const NAV: NavEntry[] = [
     icon: 'home',
     group: 'create',
     summary: 'What this studio is, and where to start.',
+  },
+  {
+    id: 'prompt',
+    label: 'Prompt Lab',
+    path: '/prompt',
+    icon: 'layers',
+    group: 'create',
+    summary: 'See what a provider adds to your prompt before you spend anything.',
   },
   {
     id: 'image',

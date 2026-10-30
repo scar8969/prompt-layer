@@ -1,7 +1,11 @@
 # Implementation plan and risk register
 
-Studio is the AI image and video creative platform in this repository. It is a sibling
-of Prompt Layer, not a replacement: Prompt Layer stays exactly as it is.
+This repository holds one product: a BYOK image and video studio whose differentiator
+is that it tells you what each provider does to your prompt. The static preflight page
+that used to sit beside it is gone — its dataset and its assembly logic are served by
+`studio/routes/prompt.py` and rendered by the Prompt Lab screen, inside the same
+session and the same navigation as generation. Nothing is left at the root except the
+application itself (`tests/test_deploy.py` asserts both).
 
 ## Stack decision
 
@@ -11,10 +15,15 @@ web/dist and served from the same origin. This reuses the pattern the repository
 already proves: `BaseHTTPRequestHandler` under the hood, a dependency-light package
 next to it, and pytest tests that speak real HTTP to a real server.
 
-It deliberately does **not** follow the Vercel function shape of `api/`. Those
-functions are request-scoped and stateless; Studio needs a durable job queue with
-long-running provider polling, so it runs as one process with in-process worker
-threads. `api/studio.py` is therefore absent by design, not by omission.
+Locally that is the only way to run it: one process with in-process worker threads,
+because the queue needs durable leases and long-running provider polling.
+
+On Vercel the same application is mounted as one catch-all function, `api/studio.py`,
+which serves `/api/*` from the router and every other path from `web/dist`. The tick
+(`api/studio_cron.py`) drives jobs that outlive a request. The older
+`api/preflight.py`, `api/compile.py` and friends remain as JSON endpoints over the
+same `promptlayer/` package; they are not a second product, and nothing in the client
+calls them.
 
 The alternative -- Postgres, Redis, BullMQ, S3, a Node service -- was rejected because
 none of those services are available in this environment (no pnpm, no Docker, no
