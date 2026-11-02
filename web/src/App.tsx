@@ -7,6 +7,8 @@ import { SessionProvider, StatusProvider, useSession } from './state/session.tsx
 import { AuthScreen } from './features/auth/AuthScreen.tsx';
 import { LoadingState } from './components/State.tsx';
 import { HomeScreen } from './features/home/HomeScreen.tsx';
+import { ExploreScreen } from './features/explore/ExploreScreen.tsx';
+import { CinemaScreen } from './features/cinema/CinemaScreen.tsx';
 import { PromptLabScreen } from './features/prompt/PromptLabScreen.tsx';
 import { ImageStudioScreen } from './features/image-studio/ImageStudioScreen.tsx';
 import { VideoStudioScreen } from './features/video-studio/VideoStudioScreen.tsx';
@@ -33,6 +35,8 @@ const AUTH_ROUTES: { path: string; mode: 'login' | 'register' | 'forgot' | 'rese
 
 function ScreenForPath({ path }: { path: string }) {
   if (matchPath('/', path)) return <HomeScreen />;
+  if (matchPath('/explore', path)) return <ExploreScreen />;
+  if (matchPath('/cinema', path)) return <CinemaScreen />;
   if (matchPath('/prompt', path)) return <PromptLabScreen />;
   if (matchPath('/image', path)) return <ImageStudioScreen />;
   if (matchPath('/video', path)) return <VideoStudioScreen />;

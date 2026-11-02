@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 
 import App from './App.tsx';
 import './styles/index.css';
+import './styles/cinema.css';
 
 const container = document.getElementById('root');
 if (!container) {

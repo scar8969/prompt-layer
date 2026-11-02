@@ -1,14 +1,16 @@
 // The studio's surfaces. Every entry is a real screen; none of them is a
 // placeholder. The icon name indexes into components/Icon.tsx.
 //
-// Prompt Lab sits with the creation surfaces rather than in a second product:
-// the layer dataset is part of this application, not a sibling site, and the
-// question it answers ("what will this model do to my prompt?") belongs next to
-// the button that spends the money.
+// The order is the product's own: you look first (Explore), then you shape a
+// shot (Cinema), then you run it (Image / Video), then you check what the
+// provider will do to the prompt before it is spent (Prompt Lab). Organise and
+// configure sit below the line, where they belong.
 
 export interface NavEntry {
   id: string;
   label: string;
+  /** Short label for the icon rail. */
+  short: string;
   path: string;
   icon: string;
   group: 'create' | 'organise' | 'configure';
@@ -19,22 +21,34 @@ export const NAV: NavEntry[] = [
   {
     id: 'home',
     label: 'Home',
+    short: 'Home',
     path: '/',
     icon: 'home',
     group: 'create',
     summary: 'What this studio is, and where to start.',
   },
   {
-    id: 'prompt',
-    label: 'Prompt Lab',
-    path: '/prompt',
-    icon: 'layers',
+    id: 'explore',
+    label: 'Explore',
+    short: 'Explore',
+    path: '/explore',
+    icon: 'compass',
     group: 'create',
-    summary: 'See what a provider adds to your prompt before you spend anything.',
+    summary: 'Seventy sourced looks, as a gallery you can generate from.',
+  },
+  {
+    id: 'cinema',
+    label: "Director's Panel",
+    short: 'Cinema',
+    path: '/cinema',
+    icon: 'clapper',
+    group: 'create',
+    summary: 'Body, glass, light and grade — compiled into one prompt, clause by clause.',
   },
   {
     id: 'image',
     label: 'Image Studio',
+    short: 'Image',
     path: '/image',
     icon: 'image',
     group: 'create',
@@ -43,22 +57,25 @@ export const NAV: NavEntry[] = [
   {
     id: 'video',
     label: 'Video Studio',
+    short: 'Video',
     path: '/video',
     icon: 'video',
     group: 'create',
     summary: 'Text, image and video driven generation.',
   },
   {
-    id: 'projects',
-    label: 'Projects',
-    path: '/projects',
-    icon: 'folder',
-    group: 'organise',
-    summary: 'Group assets and jobs into projects.',
+    id: 'prompt',
+    label: 'Prompt Lab',
+    short: 'Layers',
+    path: '/prompt',
+    icon: 'layers',
+    group: 'create',
+    summary: 'See what a provider adds to your prompt before you spend anything.',
   },
   {
     id: 'assets',
-    label: 'Asset Library',
+    label: 'Library',
+    short: 'Library',
     path: '/assets',
     icon: 'library',
     group: 'organise',
@@ -66,7 +83,8 @@ export const NAV: NavEntry[] = [
   },
   {
     id: 'presets',
-    label: 'Presets & Workflows',
+    label: 'Presets',
+    short: 'Presets',
     path: '/presets',
     icon: 'sliders',
     group: 'organise',
@@ -74,15 +92,26 @@ export const NAV: NavEntry[] = [
   },
   {
     id: 'characters',
-    label: 'Character Library',
+    label: 'Characters',
+    short: 'Cast',
     path: '/characters',
     icon: 'person',
     group: 'organise',
     summary: 'Reusable character descriptions and references.',
   },
   {
+    id: 'projects',
+    label: 'Projects',
+    short: 'Projects',
+    path: '/projects',
+    icon: 'folder',
+    group: 'organise',
+    summary: 'Group assets and jobs into projects.',
+  },
+  {
     id: 'history',
-    label: 'History & Jobs',
+    label: 'History',
+    short: 'History',
     path: '/history',
     icon: 'clock',
     group: 'organise',
@@ -91,6 +120,7 @@ export const NAV: NavEntry[] = [
   {
     id: 'models',
     label: 'Models',
+    short: 'Models',
     path: '/models',
     icon: 'chip',
     group: 'configure',
@@ -98,7 +128,8 @@ export const NAV: NavEntry[] = [
   },
   {
     id: 'connections',
-    label: 'API Connections',
+    label: 'Connections',
+    short: 'Keys',
     path: '/connections',
     icon: 'plug',
     group: 'configure',
@@ -107,6 +138,7 @@ export const NAV: NavEntry[] = [
   {
     id: 'settings',
     label: 'Settings',
+    short: 'Settings',
     path: '/settings',
     icon: 'gear',
     group: 'configure',
@@ -119,6 +151,13 @@ export const NAV_GROUPS: { id: NavEntry['group']; label: string }[] = [
   { id: 'organise', label: 'Organise' },
   { id: 'configure', label: 'Configure' },
 ];
+
+/** The rail shows the creation surfaces and the four places work lands. */
+export const RAIL: { create: string[]; organise: string[]; configure: string[] } = {
+  create: ['home', 'explore', 'cinema', 'image', 'video', 'prompt'],
+  organise: ['assets', 'presets', 'characters', 'history'],
+  configure: ['models', 'connections', 'settings'],
+};
 
 export function navEntryFor(path: string): NavEntry {
   const clean = path.split('?')[0].replace(/\/+$/, '') || '/';

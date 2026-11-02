@@ -58,6 +58,12 @@ const PATHS: Record<string, string> = {
   activity: 'M3 12h4l2.5-6 4 13L16 12h5',
   crop: 'M6 2v16h16M2 6h16v16',
   reset: 'M4 4v6h6M4.5 10a8 8 0 1 1 1 8',
+  compass: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18ZM15.5 8.5l-2.3 5.2-5.2 2.3 2.3-5.2z',
+  clapper: 'M3 10h18v10H3zM3 10 5 4h18l-2 6M9 4 7.5 10M15 4l-1.5 6M21 4l-2 6',
+  sparkle:
+    'M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9zM19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z',
+  dice: 'M4 4h16v16H4zM8.5 8.5h.01M15.5 8.5h.01M12 12h.01M8.5 15.5h.01M15.5 15.5h.01',
+  camera: 'M4 8h4l1.5-2h5L16 8h4v11H4zM12 16.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z',
 };
 
 export type IconName = keyof typeof PATHS | string;

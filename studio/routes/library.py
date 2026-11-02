@@ -61,7 +61,9 @@ def _builtin_preset(entry: Mapping[str, Any]) -> Dict[str, Any]:
         "name": entry["name"],
         "description": entry.get("description") or "",
         "category": entry.get("category") or "general",
-        "thumbnail_url": None,
+        # A style card, generated from this preset's own tokens — not a render.
+        "thumbnail_url": "/api/preset-cards/%s.svg" % entry["key"],
+        "thumbnail_kind": "style_card",
         "prompt_template": entry.get("prompt_template") or "",
         "negative_prompt_template": entry.get("negative_template") or "",
         "defaults": defaults,

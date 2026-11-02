@@ -8,6 +8,9 @@ import type {
   Capabilities,
   Character,
   CharacterReference,
+  CinemaVocabulary,
+  CompiledBrief,
+  CinemaBrief,
   Connection,
   ConnectionCreateInput,
   ConnectionPatchInput,
@@ -1444,5 +1447,90 @@ export const prompt = {
       signal,
     });
     return readPreflight(envelope(payload, 'preflight'));
+  },
+};
+
+/* ---------------------------------------------------------- the panel */
+
+/**
+ * The Director's Panel. A brief in, a compiled prompt out — split into the
+ * clauses that produced it, so the interface can show an injection ledger
+ * instead of one opaque string. Nothing here touches a provider.
+ */
+export const cinema = {
+  async vocabulary(signal?: AbortSignal): Promise<CinemaVocabulary> {
+    const payload = await apiRequest<unknown>('/api/cinema/vocabulary', { signal });
+    const record = isRecord(payload) ? payload : {};
+    const vocab = isRecord(record.vocabulary) ? record.vocabulary : {};
+    const groups = arr(vocab.groups).map((raw) => {
+      const g = isRecord(raw) ? raw : {};
+      return {
+        key: str(g.key) ?? '',
+        label: str(g.label) ?? '',
+        summary: str(g.summary) ?? '',
+        controls: arr(g.controls).map((c) => {
+          const ctl = isRecord(c) ? c : {};
+          return {
+            name: str(ctl.name) ?? '',
+            label: str(ctl.label) ?? '',
+            kind: str(ctl.kind) === 'choice' ? ('choice' as const) : ('text' as const),
+            options: arr(ctl.options).map((o) => {
+              const opt = isRecord(o) ? o : {};
+              return {
+                key: str(opt.key) ?? '',
+                label: str(opt.label) ?? '',
+                adds: str(opt.adds) ?? '',
+                note: str(opt.note) ?? '',
+              };
+            }),
+          };
+        }),
+      };
+    });
+    return {
+      groups,
+      default_negative: str(vocab.default_negative) ?? '',
+      segment_order: arr(vocab.segment_order).map((s) => {
+        const item = isRecord(s) ? s : {};
+        return { key: str(item.key) ?? '', label: str(item.label) ?? '' };
+      }),
+      option_count: num(vocab.option_count) ?? 0,
+    };
+  },
+
+  async compile(input: {
+    brief: CinemaBrief;
+    modality: 'image' | 'video';
+    disabled?: string[];
+  }): Promise<CompiledBrief> {
+    const payload = await apiRequest<unknown>('/api/cinema/compile', {
+      method: 'POST',
+      body: { ...input.brief, modality: input.modality, disabled: input.disabled ?? [] },
+    });
+    const record = isRecord(payload) ? payload : {};
+    const compiled = isRecord(record.compiled) ? record.compiled : {};
+    return {
+      prompt: str(compiled.prompt) ?? '',
+      negative_prompt: str(compiled.negative_prompt) ?? '',
+      segments: arr(compiled.segments).map((raw) => {
+        const s = isRecord(raw) ? raw : {};
+        return {
+          key: str(s.key) ?? '',
+          label: str(s.label) ?? '',
+          text: str(s.text) ?? '',
+          source: str(s.source) ?? '',
+          enabled: bool(s.enabled) ?? true,
+        };
+      }),
+      omitted: strList(compiled.omitted),
+      parameters: isRecord(compiled.parameters) ? compiled.parameters : {},
+      warnings: arr(compiled.warnings).map((raw) => {
+        const w = isRecord(raw) ? raw : {};
+        return { level: str(w.level) ?? 'craft', text: str(w.text) ?? '' };
+      }),
+      modality: str(compiled.modality) ?? input.modality,
+      aspect_ratio: str(compiled.aspect_ratio) ?? '',
+      storyboard_hint: str(compiled.storyboard_hint) ?? '',
+    };
   },
 };

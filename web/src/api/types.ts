@@ -754,3 +754,63 @@ export interface PromptPreflight {
   version: string;
 }
 
+
+/* ------------------------------------------------------------ the panel */
+
+/** One choice on the Director's Panel: the words it contributes, and why. */
+export interface CinemaOption {
+  key: string;
+  label: string;
+  adds: string;
+  note: string;
+}
+
+export interface CinemaControl {
+  name: string;
+  label: string;
+  kind: 'choice' | 'text';
+  options: CinemaOption[];
+}
+
+export interface CinemaGroup {
+  key: string;
+  label: string;
+  summary: string;
+  controls: CinemaControl[];
+}
+
+export interface CinemaVocabulary {
+  groups: CinemaGroup[];
+  default_negative: string;
+  segment_order: { key: string; label: string }[];
+  option_count: number;
+}
+
+/** One clause of the compiled prompt, and the control that produced it. */
+export interface CompiledSegment {
+  key: string;
+  label: string;
+  text: string;
+  source: string;
+  enabled: boolean;
+}
+
+export interface CinemaWarning {
+  level: string;
+  text: string;
+}
+
+export interface CompiledBrief {
+  prompt: string;
+  negative_prompt: string;
+  segments: CompiledSegment[];
+  omitted: string[];
+  parameters: Record<string, unknown>;
+  warnings: CinemaWarning[];
+  modality: string;
+  aspect_ratio: string;
+  storyboard_hint: string;
+}
+
+/** The panel's whole state: every control, by name. */
+export type CinemaBrief = Record<string, string | string[]>;

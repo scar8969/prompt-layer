@@ -1,15 +1,20 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 import { Link, useRouter } from './router.tsx';
-import { NAV, NAV_GROUPS, navEntryFor } from './nav.ts';
+import { NAV, RAIL, navEntryFor } from './nav.ts';
 import { Icon } from '../components/Icon.tsx';
-import { Badge } from '../components/Badge.tsx';
-import { IconButton } from '../components/Button.tsx';
 import { useSession, useStatus } from '../state/session.tsx';
+import { useQuery } from '../state/query.ts';
+import { connections as connectionsApi } from '../api/endpoints.ts';
+import type { Connection } from '../api/types.ts';
 
 /**
- * The permanent frame: a rail of the eleven surfaces, a top bar that names where
- * you are, and the main region. The rail collapses into a bottom tab bar on
- * narrow screens, which is a CSS-only change; nothing here duplicates the nav.
+ * The permanent frame: a slim icon rail, a quiet top bar, and the content.
+ *
+ * The rail is the product's spine — six creation surfaces, four places work
+ * lands, three configuration screens — because that is the whole application
+ * and hiding half of it behind a menu would be a lie about its size. The bar
+ * above the content carries only what changes: where you are, whether a key is
+ * connected, and the shortcut into the studio.
  */
 export function AppShell({ children }: { children: ReactNode }) {
   const { route, navigate } = useRouter();
@@ -25,96 +30,149 @@ export function AppShell({ children }: { children: ReactNode }) {
     mainRef.current?.focus({ preventScroll: true });
   }, [route.path]);
 
+  const byId = (id: string) => NAV.find((item) => item.id === id);
+  const initial = (user?.display_name ?? user?.email ?? '?').trim().charAt(0).toUpperCase();
+  // The count is read from the real registry, not inferred from the status
+  // document — a connection that exists but is paused still has a key stored,
+  // and the pill should say so.
+  const links = useQuery<Connection[]>('connections:shell', () => connectionsApi.list(), {
+    staleMs: 30_000,
+  });
+  const connected = (links.data?.length ?? 0) > 0;
+
   return (
-    <div className="app">
+    <div className="hf-app">
       <a className="skip-link" href="#main">
         Skip to content
       </a>
 
-      <header className="topbar">
-        <div className="topbar__title">
-          <h1>{entry.label}</h1>
-          <span className="dim" style={{ fontSize: 'var(--fs-xs)' }}>
-            {workspace?.name ?? 'No workspace reported'}
-          </span>
-        </div>
-        <span className="topbar__spacer" />
-        <div className="topbar__actions">
-          {status ? (
-            <Badge tone={status.mock_provider_enabled ? 'mock' : 'plain'}>
-              {status.mock_provider_enabled
-                ? 'placeholder provider enabled'
-                : 'placeholder provider off'}
-            </Badge>
-          ) : null}
-          <Link to="/history" className="btn btn--sm btn--ghost">
-            <Icon name="clock" size={14} /> Jobs
-          </Link>
-          <IconButton
-            label="Appearance and preferences"
-            onClick={() => navigate('/settings')}
-          >
-            <Icon name="gear" size={15} />
-          </IconButton>
-        </div>
-      </header>
+      <nav className="hf-rail" aria-label="Studio sections">
+        <Link to="/" className="hf-rail__mark" title="Prompt Layer — home">
+          <Icon name="layers" size={17} />
+        </Link>
 
-      <nav className="rail" aria-label="Studio sections">
-        <div className="rail__brand">
-          <span className="rail__mark" aria-hidden="true">
-            <Icon name="layers" size={18} />
-          </span>
-          <span className="rail__name">Prompt Layer</span>
+        <div className="hf-rail__group">
+          {RAIL.create.map((id) => {
+            const item = byId(id);
+            if (!item) return null;
+            return (
+              <Link
+                key={item.id}
+                to={item.path}
+                className="hf-rail__link"
+                title={item.summary}
+                ariaCurrent={item.id === entry.id ? 'page' : undefined}
+              >
+                <span className="hf-rail__icon">
+                  <Icon name={item.icon} size={18} />
+                </span>
+                <span>{item.short}</span>
+              </Link>
+            );
+          })}
         </div>
 
-        {NAV_GROUPS.map((group) => {
-          const entries = NAV.filter((item) => item.group === group.id);
-          if (!entries.length) return null;
-          return (
-            <div className="rail__group" key={group.id}>
-              <span className="rail__group-label">{group.label}</span>
-              {entries.map((item) => {
-                const current = item.id === entry.id;
-                return (
-                  <Link
-                    key={item.id}
-                    to={item.path}
-                    className="rail__link"
-                    title={item.summary}
-                    ariaCurrent={current ? 'page' : undefined}
-                  >
-                    <span
-                      className="rail__icon"
-                      aria-hidden="true"
-                      style={{ display: 'inline-flex' }}
-                    >
-                      <Icon name={item.icon} size={16} />
-                    </span>
-                    <span>{item.label}</span>
-                  </Link>
-                );
-              })}
-            </div>
-          );
-        })}
+        <div className="hf-rail__sep" />
 
-        <div className="rail__footer">
-          <span>{user?.display_name ?? user?.email ?? 'Signed out'}</span>
+        <div className="hf-rail__group">
+          {RAIL.organise.map((id) => {
+            const item = byId(id);
+            if (!item) return null;
+            return (
+              <Link
+                key={item.id}
+                to={item.path}
+                className="hf-rail__link"
+                title={item.summary}
+                ariaCurrent={item.id === entry.id ? 'page' : undefined}
+              >
+                <span className="hf-rail__icon">
+                  <Icon name={item.icon} size={17} />
+                </span>
+                <span>{item.short}</span>
+              </Link>
+            );
+          })}
+        </div>
+
+        <span className="hf-rail__spacer" />
+
+        <div className="hf-rail__group">
+          {RAIL.configure.map((id) => {
+            const item = byId(id);
+            if (!item) return null;
+            return (
+              <Link
+                key={item.id}
+                to={item.path}
+                className="hf-rail__link"
+                title={item.summary}
+                ariaCurrent={item.id === entry.id ? 'page' : undefined}
+              >
+                <span className="hf-rail__icon">
+                  <Icon name={item.icon} size={17} />
+                </span>
+                <span>{item.short}</span>
+              </Link>
+            );
+          })}
+
           <button
             type="button"
-            className="btn btn--sm btn--ghost"
+            className="hf-rail__avatar"
+            title={`${user?.display_name ?? user?.email ?? 'Signed out'} — account`}
             onClick={() => {
-              void signOut();
+              if (window.confirm('Sign out of this workspace?')) void signOut();
             }}
           >
-            Sign out
+            {initial}
           </button>
         </div>
       </nav>
 
-      <main className="main" id="main" ref={mainRef} tabIndex={-1}>
-        {children}
-      </main>
+      <div className="hf-main">
+        <header className="hf-topbar">
+          <div className="hf-topbar__crumb">
+            {entry.label}
+            <span>·</span>
+            <span>{workspace?.name ?? 'No workspace'}</span>
+          </div>
+
+          <span className="hf-topbar__spacer" />
+
+          <button
+            type="button"
+            className={connected ? 'hf-pill hf-pill--live' : 'hf-pill hf-pill--warn'}
+            onClick={() => navigate('/connections')}
+            title={
+              connected
+                ? 'Provider connections are configured. Every generation runs on your key.'
+                : 'No provider is connected yet. Nothing can be generated until one is.'
+            }
+          >
+            <span className="hf-pill__dot" />
+            {connected ? 'BYOK · connected' : 'BYOK · no key yet'}
+          </button>
+
+          {status?.mock_provider_enabled ? (
+            <span className="hf-pill" title="The local placeholder provider accepts requests without a key.">
+              placeholder on
+            </span>
+          ) : null}
+
+          <Link to="/history" className="hf-btn hf-btn--sm hf-btn--ghost" title="Every request and its outputs">
+            <Icon name="clock" size={14} /> Jobs
+          </Link>
+
+          <Link to="/image" className="hf-btn hf-btn--sm hf-btn--primary">
+            <Icon name="plus" size={14} /> New generation
+          </Link>
+        </header>
+
+        <main className="hf-content" id="main" ref={mainRef} tabIndex={-1}>
+          {children}
+        </main>
+      </div>
     </div>
   );
 }

@@ -243,6 +243,18 @@ export function GenerationStudio({ kind }: { kind: StudioKind }) {
     if (!found) return;
     appliedDeepLinkPreset.current = true;
     applyPreset(found);
+    // If the user arrived from the Director's Panel, the compiled prompt
+    // and its metadata are in the query string. Prefer the preset's own
+    // values, but fall back to the panel's output so the user can edit
+    // before submitting.
+    const maybePrompt = route.params.get('prompt');
+    if (maybePrompt && !prompt.trim()) setPrompt(maybePrompt);
+    const maybeNegative = route.params.get('negative');
+    if (maybeNegative && !negativePrompt.trim()) setNegativePrompt(maybeNegative);
+    const maybeAspect = route.params.get('aspect');
+    if (maybeAspect && !aspectRatio) setAspectRatio(maybeAspect);
+    const maybeMove = route.params.get('move');
+    if (maybeMove && !cameraMove) setCameraMove(maybeMove);
     submitOnArrival.current = route.params.get('go') === '1';
     // Drop the query so a reload does not reapply the preset over edited fields.
     navigate(`/${kind}`, { replace: true });
