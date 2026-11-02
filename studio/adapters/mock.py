@@ -132,6 +132,13 @@ class MockModel:
     capabilities: CapabilityProfile
     schema: ParameterSchema
     summary: str
+    #: What the placeholder encoder should write. It is separate from `modality`
+    #: because an audio model is registered on the video queue (the job's media
+    #: family) while its output is a track, and the bytes must say so.
+    output_kind: str = ""
+
+    def placeholder_kind(self) -> str:
+        return self.output_kind or self.modality
 
     def to_public(self) -> Dict[str, Any]:
         return {
@@ -181,6 +188,25 @@ def _edit_profile() -> CapabilityProfile:
             "the placeholder encoder does not read either. This model exists so the "
             "reference and masking controls can be exercised without a live provider; "
             "it is not evidence that any model performs real inpainting.",
+        ),
+        notes=(PLACEHOLDER_NOTE,),
+    )
+
+
+def _audio_profile() -> CapabilityProfile:
+    return CapabilityProfile(
+        modality="video",
+        modes=("audio", "voiceover", "dub", "lip_sync"),
+        max_outputs=1,
+        supports_negative_prompt=False,
+        supports_seed=True,
+        supports_audio=True,
+        reference_roles=("audio_track", "voice_sample", "main_subject"),
+        max_reference_images=2,
+        restrictions=(
+            "Produces a one-second tone, not speech. It exists so the audio asset "
+            "path, the track player and the lipsync form can be exercised without a "
+            "live provider; nothing about the tone is evidence a voice model works.",
         ),
         notes=(PLACEHOLDER_NOTE,),
     )
@@ -307,6 +333,15 @@ MOCK_MODELS: Tuple[MockModel, ...] = (
         capabilities=_video_profile(),
         schema=_video_schema(),
         summary="Renders a short animated placeholder so the video studio, player and timeline can be exercised.",
+    ),
+    MockModel(
+        key="mock/placeholder-audio",
+        display_name="Placeholder Audio",
+        modality="video",
+        capabilities=_audio_profile(),
+        schema=ParameterSchema(specs=[]),
+        summary="Renders a one-second tone so the audio asset, track player and lipsync form can be exercised.",
+        output_kind="audio",
     ),
 )
 
@@ -584,7 +619,7 @@ class MockAdapter(ModelAdapter):
                 retry_after_seconds=max(0.2, min(1.0, delay - elapsed)),
             )
 
-        outputs = render_outputs(output_directory(context), seed, model.modality, count)
+        outputs = render_outputs(output_directory(context), seed, model.placeholder_kind(), count)
         if not outputs:
             raise ApiError(
                 INVALID_RESPONSE,

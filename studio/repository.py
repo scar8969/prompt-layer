@@ -243,6 +243,8 @@ _JSON_COLUMNS: Dict[str, frozenset] = {
     "character_references": frozenset(),
     "usage_records": frozenset({"units_json", "estimated_cost_json", "actual_cost_json"}),
     "audit_log": frozenset({"detail_json"}),
+    "canvases": frozenset({"nodes_json", "edges_json"}),
+    "canvas_runs": frozenset({"node_states_json", "order_json"}),
 }
 
 #: JSON columns whose natural empty value is a list rather than an object.
@@ -256,6 +258,9 @@ _LIST_JSON_COLUMNS = frozenset(
         "required_references_json",
         "variables_json",
         "preferred_models_json",
+        "nodes_json",
+        "edges_json",
+        "order_json",
     }
 )
 
@@ -2534,6 +2539,10 @@ _JOB_FIELDS: Tuple[str, ...] = (
     "cost_estimate",
     "idempotency_key",
     "status",
+    # Set when the job was queued to render a catalogue preset's preview. The
+    # value is the preset id the library route already uses (`builtin:<key>` or
+    # a saved row id), so a preview joins back without a second table.
+    "preset_key",
 )
 
 #: The default page size when a caller does not name one.
@@ -2720,9 +2729,92 @@ class JobRepository(_Repository):
             next_cursor = _cursor_key(last["created_at"], last["id"])
         return rows, next_cursor
 
+    # -- preset previews ----------------------------------------------------
+
+    def _preview_row(self, row: Dict[str, Any]) -> Dict[str, Any]:
+        """One preview job with the first stored output attached.
+
+        A preview is an ordinary job; the only thing that makes it a preview is
+        the preset key it carries. This adds the content and thumbnail routes the
+        client needs and nothing else, because the job row already tells the truth
+        about whether a render exists.
+        """
+        output = self._db.query_dict(
+            "SELECT asset_id FROM generation_outputs"
+            " WHERE job_id = ? AND asset_id IS NOT NULL"
+            " ORDER BY batch_index ASC LIMIT 1",
+            (str(row.get("id") or ""),),
+        )
+        asset_id = str((output or {}).get("asset_id") or "")
+        return {
+            "preset_key": str(row.get("preset_key") or ""),
+            "job_id": str(row.get("id") or ""),
+            "status": str(row.get("status") or ""),
+            "model_id": str(row.get("model_id") or ""),
+            "asset_id": asset_id or None,
+            "url": ("/api/assets/%s/content" % asset_id) if asset_id else None,
+            "thumbnail_url": ("/api/assets/%s/thumbnail" % asset_id) if asset_id else None,
+            "error": str(row.get("error_message") or ""),
+            "created_at": row.get("created_at"),
+        }
+
+    def list_previews(
+        self, workspace_id: str, preset_key: str, *, limit: int = 10
+    ) -> List[Dict[str, Any]]:
+        """Every preview render attempted for one preset, newest first.
+
+        Authorises: reading this workspace's own preview jobs for a preset it may
+        see. A preview somebody else paid for is not in this list, because the
+        workspace predicate is in the SQL.
+
+        Refuses: another workspace's jobs, and a limit outside 1..50 (clamped).
+        Returns only what the queue recorded; a preset with no render yet returns
+        an empty list rather than an invented placeholder.
+        """
+        scope = _require_workspace(workspace_id)
+        key = _require_text(preset_key, "preset_key")
+        rows = self._all(
+            "SELECT " + self._projection("generation_jobs", "j") + " FROM generation_jobs j"
+            " WHERE j.workspace_id = ? AND j.preset_key = ?"
+            " ORDER BY j.created_at DESC, j.id DESC LIMIT ?",
+            (scope, key, int(clamp(int(limit), 1, 50))),
+        )
+        return [self._preview_row(row) for row in rows]
+
+    def preview_map(
+        self, workspace_id: str, preset_keys: Sequence[str]
+    ) -> Dict[str, Dict[str, Any]]:
+        """The latest preview for each named preset, keyed by preset id.
+
+        One query for a whole gallery instead of one per tile: the client renders
+        seventy presets at once, and seventy round trips would make the wall feel
+        slower than the generation it is advertising. The newest job wins even if
+        it failed, because a failed re-render is the current truth and hiding it
+        behind an older success would misreport what the key just did.
+        """
+        scope = _require_workspace(workspace_id)
+        wanted = [str(item) for item in preset_keys if str(item)]
+        if not wanted:
+            return {}
+        # A gallery passes tens of keys, not thousands. The cap keeps a caller
+        # from turning this into a table scan by naming every preset ever seen.
+        keys = list(dict.fromkeys(wanted))[:120]
+        rows = self._all(
+            "SELECT " + self._projection("generation_jobs", "j") + " FROM generation_jobs j"
+            " WHERE j.workspace_id = ? AND j.preset_key IN ("
+            + _placeholders(len(keys))
+            + ") ORDER BY j.created_at DESC, j.id DESC",
+            [scope, *keys],
+        )
+        latest: Dict[str, Dict[str, Any]] = {}
+        for row in rows:
+            key = str(row.get("preset_key") or "")
+            if key and key not in latest:
+                latest[key] = self._preview_row(row)
+        return latest
+
     def counts(self, workspace_id: str) -> Dict[str, int]:
         """How many jobs sit in each bucket for one workspace.
-
         Authorises: counting this workspace's jobs by state.
 
         Refuses: to count across tenants. Returns the four buckets the dashboards
@@ -2972,6 +3064,7 @@ class JobRepository(_Repository):
                 _json_payload(values.get("cost_estimate"), "cost_estimate")
             ),
             "idempotency_key": _text(values.get("idempotency_key")),
+            "preset_key": _text(values.get("preset_key")),
             "created_at": stamp,
             "updated_at": stamp,
         }
@@ -4917,6 +5010,195 @@ class AuditRepository(_Repository):
 
 
 # ---------------------------------------------------------------------------
+# Canvases and their runs
+# ---------------------------------------------------------------------------
+
+
+class CanvasRepository(_Repository):
+    """Saved node graphs and the runs that execute them.
+
+    A canvas is a document; a run is a record of which ordinary generation job
+    each node produced. Neither table is a queue, and nothing here contacts a
+    provider. Every read and write is scoped to one workspace, including the run
+    lookups, so a run id cannot be used to read another tenant's graph.
+    """
+
+    TABLE = "canvases"
+
+    def list(self, workspace_id: str) -> List[Dict[str, Any]]:
+        """Live canvases in one workspace, most recently edited first."""
+        scope = _require_workspace(workspace_id)
+        return self._all(
+            "SELECT * FROM canvases WHERE workspace_id = ? AND deleted_at IS NULL"
+            " ORDER BY updated_at DESC",
+            (scope,),
+        )
+
+    def get(self, workspace_id: str, canvas_id: str) -> Dict[str, Any]:
+        """One live canvas, or NOT_FOUND for a missing, deleted or foreign one."""
+        scope = _require_workspace(workspace_id)
+        return self._scoped_row(
+            "SELECT * FROM canvases WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL",
+            (canvas_id, scope),
+            "canvas",
+        )
+
+    def create(self, workspace_id: str, user_id: str, payload: Mapping[str, Any]) -> Dict[str, Any]:
+        """Store a validated canvas. The graph is normalised by studio.canvas first.
+
+        Refuses an unknown field, an empty name, and a graph that is not a list of
+        nodes and edges -- the route validates the graph, but this layer refuses a
+        payload that skipped that step rather than storing a document no run can
+        execute.
+        """
+        from .canvas import normalise_graph
+
+        scope = _require_workspace(workspace_id)
+        owner = _require_text(user_id, "user_id")
+        values = _mapping(payload, "canvas")
+        _reject_unknown(values, ("name", "description", "nodes", "edges"), "canvas")
+        name = _require_text(values.get("name"), "name", limit=200)
+        nodes, edges, _order = normalise_graph(values.get("nodes") or [], values.get("edges") or [])
+        stamp = now_iso()
+        record = {
+            "id": new_id(),
+            "workspace_id": scope,
+            "created_by_user_id": owner,
+            "name": name,
+            "description": truncate(str(values.get("description") or ""), 4000) or "",
+            "nodes_json": json_dumps(nodes),
+            "edges_json": json_dumps(edges),
+            "created_at": stamp,
+            "updated_at": stamp,
+        }
+        with self._db.write_tx() as tx:
+            tx.insert(self.TABLE, record)
+        return self.get(scope, record["id"])
+
+    def update(self, workspace_id: str, canvas_id: str, payload: Mapping[str, Any]) -> Dict[str, Any]:
+        """Change a canvas. The whole graph is re-validated, never patched blind."""
+        from .canvas import normalise_graph
+
+        scope = _require_workspace(workspace_id)
+        self.get(scope, canvas_id)
+        values = _mapping(payload, "canvas")
+        _reject_unknown(values, ("name", "description", "nodes", "edges"), "canvas")
+        updates: Dict[str, Any] = {"updated_at": now_iso()}
+        if "name" in values:
+            updates["name"] = _require_text(values.get("name"), "name", limit=200)
+        if "description" in values:
+            updates["description"] = truncate(str(values.get("description") or ""), 4000) or ""
+        if "nodes" in values or "edges" in values:
+            current = self.get(scope, canvas_id)
+            nodes, edges, _order = normalise_graph(
+                values.get("nodes", current.get("nodes") or []),
+                values.get("edges", current.get("edges") or []),
+            )
+            updates["nodes_json"] = json_dumps(nodes)
+            updates["edges_json"] = json_dumps(edges)
+        with self._db.write_tx() as tx:
+            self._db.update_where(self.TABLE, updates, "id = ? AND workspace_id = ?", (canvas_id, scope))
+        return self.get(scope, canvas_id)
+
+    def soft_delete(self, workspace_id: str, canvas_id: str) -> Dict[str, Any]:
+        """Remove a canvas. Its runs stay, because they reference jobs that ran."""
+        scope = _require_workspace(workspace_id)
+        self.get(scope, canvas_id)
+        stamp = now_iso()
+        with self._db.write_tx() as tx:
+            self._db.update_where(
+                self.TABLE,
+                {"deleted_at": stamp, "updated_at": stamp},
+                "id = ? AND workspace_id = ?",
+                (canvas_id, scope),
+            )
+        return {"ok": True, "id": canvas_id, "deleted_at": stamp}
+
+    # -- runs ---------------------------------------------------------------
+
+    def create_run(
+        self, workspace_id: str, canvas_id: str, user_id: str, order: Sequence[str]
+    ) -> Dict[str, Any]:
+        """Open a run in ``queued``. Nothing is executed by this call."""
+        scope = _require_workspace(workspace_id)
+        owner = _require_text(user_id, "user_id")
+        self.get(scope, canvas_id)
+        stamp = now_iso()
+        record = {
+            "id": new_id(),
+            "canvas_id": canvas_id,
+            "workspace_id": scope,
+            "created_by_user_id": owner,
+            "status": "queued",
+            "node_states_json": json_dumps({}),
+            "order_json": json_dumps([str(item) for item in order]),
+            "error": "",
+            "created_at": stamp,
+            "updated_at": stamp,
+        }
+        with self._db.write_tx() as tx:
+            tx.insert("canvas_runs", record)
+        return self.get_run(scope, canvas_id, record["id"])
+
+    def get_run(self, workspace_id: str, canvas_id: str, run_id: str) -> Dict[str, Any]:
+        """One run, scoped by both the workspace and the canvas it belongs to."""
+        scope = _require_workspace(workspace_id)
+        return self._scoped_row(
+            "SELECT * FROM canvas_runs WHERE id = ? AND canvas_id = ? AND workspace_id = ?",
+            (run_id, canvas_id, scope),
+            "canvas run",
+            table="canvas_runs",
+        )
+
+    def list_runs(self, workspace_id: str, canvas_id: str, *, limit: int = 20) -> List[Dict[str, Any]]:
+        """The recent runs of one canvas, newest first."""
+        scope = _require_workspace(workspace_id)
+        return self._all(
+            "SELECT * FROM canvas_runs WHERE canvas_id = ? AND workspace_id = ?"
+            " ORDER BY created_at DESC LIMIT ?",
+            (canvas_id, scope, int(clamp(int(limit), 1, 50))),
+            table="canvas_runs",
+        )
+
+    def update_run(
+        self,
+        workspace_id: str,
+        run_id: str,
+        *,
+        status: Optional[str] = None,
+        node_states: Optional[Mapping[str, Any]] = None,
+        error: Optional[str] = None,
+        started: bool = False,
+        finished: bool = False,
+    ) -> Dict[str, Any]:
+        """Write what a run actually reached. Only the named fields move."""
+        scope = _require_workspace(workspace_id)
+        updates: Dict[str, Any] = {"updated_at": now_iso()}
+        if status is not None:
+            updates["status"] = _choice(
+                status, ("queued", "running", "completed", "failed", "cancelled"), "status"
+            )
+        if node_states is not None:
+            updates["node_states_json"] = json_dumps(dict(node_states))
+        if error is not None:
+            updates["error"] = truncate(str(error), 4000) or ""
+        if started:
+            updates["started_at"] = now_iso()
+        if finished:
+            updates["finished_at"] = now_iso()
+        with self._db.write_tx() as tx:
+            self._db.update_where("canvas_runs", updates, "id = ? AND workspace_id = ?", (run_id, scope))
+        row = self._one(
+            "SELECT * FROM canvas_runs WHERE id = ? AND workspace_id = ?",
+            (run_id, scope),
+            table="canvas_runs",
+        )
+        if row is None:
+            raise _not_found("canvas run")
+        return row
+
+
+# ---------------------------------------------------------------------------
 # The bundle
 # ---------------------------------------------------------------------------
 
@@ -4936,6 +5218,7 @@ class Repositories:
     assets: AssetRepository
     jobs: JobRepository
     library: LibraryRepository
+    canvases: CanvasRepository
     usage: UsageRepository
     audit: AuditRepository
 
@@ -4961,6 +5244,7 @@ def repositories(db: Database) -> Repositories:
         assets=AssetRepository(db),
         jobs=JobRepository(db),
         library=LibraryRepository(db),
+        canvases=CanvasRepository(db),
         usage=UsageRepository(db),
         audit=AuditRepository(db),
     )

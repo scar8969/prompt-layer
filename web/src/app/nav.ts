@@ -46,9 +46,26 @@ export const NAV: NavEntry[] = [
     summary: 'Body, glass, light and grade — compiled into one prompt, clause by clause.',
   },
   {
+    id: 'canvas',
+    label: 'Canvas',
+    short: 'Canvas',
+    path: '/canvas',
+    icon: 'grid',
+    group: 'create',
+    summary: 'Chain generations into a graph; each node is one real request.',
+  },
+  {
+    id: 'marketing',
+    label: 'Marketing Studio',
+    short: 'Ads',
+    path: '/marketing',
+    icon: 'sparkle',
+    group: 'create',
+    summary: 'A product page in, a campaign of real renders out.',
+  },
+  {
     id: 'image',
-    label: 'Image Studio',
-    short: 'Image',
+    label: 'Image Studio',    short: 'Image',
     path: '/image',
     icon: 'image',
     group: 'create',
@@ -154,7 +171,7 @@ export const NAV_GROUPS: { id: NavEntry['group']; label: string }[] = [
 
 /** The rail shows the creation surfaces and the four places work lands. */
 export const RAIL: { create: string[]; organise: string[]; configure: string[] } = {
-  create: ['home', 'explore', 'cinema', 'image', 'video', 'prompt'],
+  create: ['home', 'explore', 'cinema', 'canvas', 'marketing', 'image', 'video', 'prompt'],
   organise: ['assets', 'presets', 'characters', 'history'],
   configure: ['models', 'connections', 'settings'],
 };

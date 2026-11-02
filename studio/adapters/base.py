@@ -68,6 +68,12 @@ VIDEO_MODES = (
     "upscale",
     "audio",
     "lip_sync",
+    # Audio in its clip-bound forms. A voiceover, a dub and a lip-sync all take a
+    # clip and return a clip (or a track) with sound; none of them is a second
+    # media type. The platform's queue stays image/video and the output asset
+    # carries its real kind from the bytes the provider returned.
+    "voiceover",
+    "dub",
 )
 
 MODES_BY_MODALITY: Dict[str, Tuple[str, ...]] = {
@@ -106,6 +112,8 @@ MODE_LABELS: Dict[str, str] = {
     "upscale": "Upscale",
     "audio": "Audio generation",
     "lip_sync": "Lip sync",
+    "voiceover": "Voiceover",
+    "dub": "Dubbing / translation",
 }
 
 #: Modes that require the caller to supply at least one input image. Used to give
@@ -134,8 +142,13 @@ MODES_REQUIRING_MASK = frozenset({"inpaint"})
 
 #: Modes that require an input video.
 MODES_REQUIRING_VIDEO = frozenset(
-    {"video_to_video", "extend", "motion_transfer", "reference_video", "restyle", "lip_sync"}
+    {"video_to_video", "extend", "motion_transfer", "reference_video", "restyle", "lip_sync", "dub"}
 )
+
+#: Modes where the provider is expected to return a media stream that must be
+#: stored as an asset of whatever kind its bytes prove -- not necessarily the
+#: modality of the job. A voiceover on a video model is still a track.
+MODES_RETURNING_AUDIO = frozenset({"audio", "voiceover"})
 
 
 def modes_for(modality: str) -> Tuple[str, ...]:
@@ -166,6 +179,11 @@ REFERENCE_ROLES = (
     "style",
     "first_frame",
     "last_frame",
+    # Audio references. A lip-sync needs the track the mouth must match, and a
+    # voice clone needs a sample; both are assets with their own kind, so the
+    # bytes decide whether they are audio and the role says what to do with them.
+    "audio_track",
+    "voice_sample",
 )
 
 REFERENCE_ROLE_LABELS: Dict[str, str] = {
@@ -180,6 +198,8 @@ REFERENCE_ROLE_LABELS: Dict[str, str] = {
     "style": "Style",
     "first_frame": "First frame",
     "last_frame": "Last frame",
+    "audio_track": "Audio track",
+    "voice_sample": "Voice sample",
 }
 
 

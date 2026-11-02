@@ -35,6 +35,7 @@ from .security.sessions import SessionService
 from .services.assets import AssetService
 from .services.connections import ConnectionService
 from .services.generations import GenerationService
+from .services.canvas_runs import CanvasRunService
 from .services.runner import GenerationRunner
 from .storage import store_from_config
 
@@ -62,6 +63,7 @@ class StudioApp:
     connections: ConnectionService
     assets: AssetService
     generations: GenerationService
+    canvas_runs: Any
     runner: GenerationRunner
     router: Router
     http: HttpApp
@@ -167,6 +169,7 @@ def build_app(config: Optional[Configuration] = None, *, start_worker: bool = Fa
         config=settings,
         database=db,
     )
+    canvas_runs = CanvasRunService(repos, generations, runner)
 
     router = Router()
     http_app = HttpApp(
@@ -184,6 +187,7 @@ def build_app(config: Optional[Configuration] = None, *, start_worker: bool = Fa
         connections=connections,
         assets=assets,
         generations=generations,
+        canvas_runs=canvas_runs,
         runner=runner,
         router=router,
         http=http_app,

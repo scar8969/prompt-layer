@@ -106,9 +106,18 @@ def register_routes(router: Any, app: Any) -> None:
             user_id=request.session.user_id if favorite_only else None,
             include_builtin=False,
         )
+        presets_out = list(builtin) + [_shape.row(item) for item in saved]
+        # One query for the whole grid: which of these presets has a render, made
+        # on which model, and when. A preset with no render carries `None`, which
+        # the client renders as its style card -- it never invents a preview.
+        rendered = app.repos.jobs.preview_map(
+            request.session.workspace_id, [str(item.get("id") or "") for item in presets_out]
+        )
+        for item in presets_out:
+            item["preview"] = rendered.get(str(item.get("id") or ""))
         return Response.json(
             {
-                "presets": list(builtin) + list(saved),
+                "presets": presets_out,
                 "builtin_count": len(builtin),
                 "saved_count": len(saved),
                 "categories": all_category_labels(modality),
@@ -132,7 +141,13 @@ def register_routes(router: Any, app: Any) -> None:
             entry = builtin_preset(identifier.split(":", 1)[1])
             found = _builtin_preset(entry) if entry else None
         else:
-            found = app.repos.library.get_preset(request.session.workspace_id, identifier)
+            found = _shape.row(
+                app.repos.library.get_preset(request.session.workspace_id, identifier)
+            )
+        if found is not None:
+            found["preview"] = app.repos.jobs.preview_map(
+                request.session.workspace_id, [identifier]
+            ).get(identifier)
         return Response.json({"preset": found})
 
     def update_preset(request: RequestContext) -> Response:

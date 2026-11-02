@@ -397,6 +397,67 @@ Note that the client also tries three undocumented prompt-assistant paths -
 (`web/src/api/endpoints.ts`). None of them appears in the contract, and none is
 implemented in Studio.
 
+### Rendered preset previews
+
+| method | path | auth | body / query | success key | error codes |
+|---|---|---|---|---|---|
+| POST | `/api/presets/{id}/preview` | yes | `model_id` | `job`, `preset_id` | `validation_failed`, `capability_unsupported`, `not_found` |
+| GET | `/api/presets/{id}/previews` | yes | - | `previews[]` | `not_found` |
+| GET | `/api/previews` | yes | query: `keys` (comma-separated, max 120) | `previews{key: preview}` | `validation_failed` |
+
+A preview is an ordinary generation job carrying `preset_key`, not a new object
+type. `presets[]` entries carry `preview: {preset_key, job_id, status, model_id,
+asset_id, url, thumbnail_url, error, created_at} | null`; `null` means no render
+has been made in this workspace, and the client shows the style card.
+
+### Canvas
+
+| method | path | auth | body / query | success key | error codes |
+|---|---|---|---|---|---|
+| GET | `/api/canvases` | yes | - | `canvases[]` | `unauthenticated` |
+| POST | `/api/canvases` | yes (editor) | `name`, `description?`, `nodes[]`, `edges[]` | `canvas` | `validation_failed` |
+| GET | `/api/canvases/{id}` | yes | - | `canvas` | `not_found` |
+| PATCH | `/api/canvases/{id}` | yes (editor) | partial canvas | `canvas` | `validation_failed`, `not_found` |
+| DELETE | `/api/canvases/{id}` | yes (editor) | - | `ok` | `not_found` |
+| POST | `/api/canvases/{id}/runs` | yes | - | `run` | `validation_failed`, `not_found` |
+| GET | `/api/canvases/{id}/runs` | yes | - | `runs[]` | `not_found` |
+| GET | `/api/canvases/{id}/runs/{runId}` | yes | - | `run` | `not_found` |
+
+A graph is refused when it has a cycle (the message names the nodes on it), an edge
+to a missing node, an edge from a `note`, or an unknown edge role. The run route is
+a **read that advances the run** — the same rule as `/api/jobs/{id}`: the poll is
+the clock, and queueing is idempotent.
+
+### Sound on a clip
+
+| method | path | auth | body | success key | error codes |
+|---|---|---|---|---|---|
+| POST | `/api/generations/{id}/audio` | yes | `mode` (`voiceover`/`dub`/`lip_sync`/`audio`), `script?`, `language?`, `track_asset_id?`, `model_id?` | `job` | `validation_failed`, `capability_unsupported`, `not_found` |
+
+A derived job with `relation: "audio"`. Lip sync requires `track_asset_id`; a
+voiceover or dub requires `script`. The output asset's `kind` is decided by the
+bytes the provider returned, so a voiceover is an `audio` asset even on a video
+model.
+
+### Marketing Studio
+
+| method | path | auth | body / query | success key | error codes |
+|---|---|---|---|---|---|
+| GET | `/api/marketing/formats` | yes | - | `formats[]`, `tones[]` | `unauthenticated` |
+| POST | `/api/marketing/brief` | yes | `url?`, `title?`, `description?`, `features?`, `audience?`, `benefit?`, `tone?` | `brief`, `facts` | `validation_failed` |
+| POST | `/api/marketing/campaigns` | yes | `model_id`, `formats?`, plus the same facts | `campaign` | `validation_failed`, `capability_unsupported` |
+
+The brief is deterministic: it takes only what the page states (via the
+SSRF-guarded egress client) plus what the author typed, and reports the source of
+every field. A campaign queues one ordinary generation per format and returns the
+job ids; it does not call a provider itself.
+
+### MCP
+
+`scripts/preset_mcp.py` speaks newline-delimited JSON-RPC 2.0 over stdio. Tools:
+`list_presets`, `get_preset`, `compile_brief`, `list_camera_moves`,
+`prompt_layers`. There is no tool that queues or spends.
+
 ---
 
 ## Honesty rules the client must respect

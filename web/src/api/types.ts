@@ -404,6 +404,19 @@ export interface TransformGenerationInput {
   parameters?: Record<string, unknown>;
 }
 
+export interface AudioGenerationInput {
+  /** voiceover speaks a script, dub replaces the speech, lip_sync matches a track. */
+  mode: 'voiceover' | 'dub' | 'lip_sync' | 'audio';
+  /** The words to speak. Required for voiceover and dub. */
+  script?: string;
+  /** Target language for a dub. */
+  language?: string;
+  /** The track the mouth must match. Required for lip_sync. */
+  track_asset_id?: string;
+  model_id?: string;
+  parameters?: Record<string, unknown>;
+}
+
 export interface JobError {
   code: string;
   message: string;
@@ -533,6 +546,17 @@ export interface Asset {
 
 /* ---------------------------------------------------------------- library */
 
+export interface PresetPreview {  preset_key: string;
+  job_id: string;
+  status: string;
+  model_id: string;
+  asset_id: string | null;
+  url: string | null;
+  thumbnail_url: string | null;
+  error: string;
+  created_at: string | null;
+}
+
 export interface Preset {
   /** `builtin:<key>` for a catalogue preset, a row id for a saved one. */
   id: string;
@@ -554,6 +578,8 @@ export interface Preset {
   camera: Record<string, unknown> | null;
   notes: string | null;
   thumbnail_url?: string | null;
+  /** A real render made on this workspace's own key, when one exists. */
+  preview?: PresetPreview | null;
   is_favorite?: boolean;
   created_at: string | null;
   updated_at?: string | null;
@@ -592,6 +618,133 @@ export interface Character {
   reference_count?: number | null;
   created_at: string;
   updated_at?: string;
+}
+
+/* ------------------------------------------------------------------ canvas */
+
+export type CanvasNodeKind = 'generate' | 'note';
+export type CanvasEdgeRole = 'input' | 'reference';
+
+export interface CanvasNode {
+  id: string;
+  kind: CanvasNodeKind;
+  label: string;
+  position: { x: number; y: number };
+  /** note only */
+  text?: string;
+  /** generate only */
+  prompt?: string;
+  negative_prompt?: string;
+  model_id?: string;
+  mode?: string;
+  parameters?: Record<string, unknown>;
+  count?: number;
+}
+
+export interface CanvasEdge {
+  from: string;
+  to: string;
+  role: CanvasEdgeRole;
+  reference_role?: string;
+}
+
+export interface CanvasStage {
+  node_id: string;
+  label: string;
+  kind: string;
+}
+
+export interface CanvasSummary {
+  node_count: number;
+  edge_count: number;
+  generate_count: number;
+  note_count: number;
+  order: string[];
+  stages: CanvasStage[];
+}
+
+export interface Canvas {
+  id: string;
+  workspace_id: string;
+  created_by_user_id: string;
+  name: string;
+  description: string;
+  nodes: CanvasNode[];
+  edges: CanvasEdge[];
+  created_at: string;
+  updated_at: string;
+  summary?: CanvasSummary;
+}
+
+export type CanvasNodeState = 'pending' | 'queued' | 'done' | 'failed' | 'skipped';
+
+export interface CanvasNodeStateEntry {
+  status: CanvasNodeState | string;
+  job_id: string;
+  asset_id: string;
+  error: string;
+}
+
+export interface CanvasRun {
+  id: string;
+  canvas_id: string;
+  workspace_id: string;
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | string;
+  node_states: Record<string, CanvasNodeStateEntry>;
+  order: string[];
+  error: string;
+  started_at: string | null;
+  finished_at: string | null;
+  created_at: string;
+  updated_at: string;
+  next_node?: string;
+  node_order?: string[];
+}
+
+/* -------------------------------------------------------------- marketing */
+
+export interface MarketingFormat {
+  key: string;
+  label: string;
+  aspect_ratio: string;
+  headline: string;
+  caption: string;
+  prompt: string;
+}
+
+export interface MarketingBrief {
+  product: string;
+  url: string;
+  site_name: string;
+  description: string;
+  features: string[];
+  image_reference: string;
+  audience: string;
+  benefit: string;
+  tone: string;
+  hook: string;
+  hooks: { tone: string; text: string }[];
+  formats: MarketingFormat[];
+  warnings: string[];
+  sources: Record<string, string>;
+  notes: Record<string, string>;
+}
+
+export interface MarketingRender {
+  format: string;
+  label: string;
+  aspect_ratio: string;
+  headline: string;
+  caption: string;
+  prompt: string;
+  job_id: string;
+}
+
+export interface MarketingCampaign {
+  brief: MarketingBrief;
+  model_id: string;
+  project_id: string | null;
+  renders: MarketingRender[];
 }
 
 /* -------------------------------------------------------------- responses */

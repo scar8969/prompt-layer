@@ -7,6 +7,40 @@ the change. The repo's two products are siblings: **Prompt Layer**
 
 ## Unreleased
 
+### A BYOK Higgsfield: previews, canvas, sound, marketing, MCP
+
+The merge left four surfaces a BYOK creative studio still needed. They are built
+here, each on the existing queue rather than beside it, so a frame, a clip, a
+track and a campaign node are all ordinary jobs with the same cost record and the
+same failure report.
+
+- **Rendered preset previews.** A tile is a deterministic style card until the
+  workspace spends its own key on one real frame. `POST /api/presets/{id}/preview`
+  queues an ordinary job carrying `preset_key` (migration 0008), and the preset
+  response reports the latest render with its model and date. Nothing ships as a
+  fake photograph, and nothing pretends a render exists before it does.
+- **The canvas.** `/canvas` saves a validated DAG of generate and note nodes
+  (migration 0009). A cycle is refused by naming the nodes on it; a node is queued
+  only after its upstream has a stored output; each node is one generation job.
+  The run is advanced by the read, the same rule `/api/jobs/{id}` uses.
+- **Sound on a clip.** `POST /api/generations/{id}/audio` derives a voiceover, a
+  dub or a lip sync from an existing clip. Lip sync is refused without a track and
+  a voiceover without a script; the output asset's kind comes from the returned
+  bytes. The development provider can now emit a real WAV so the path is testable.
+- **Marketing Studio.** `/marketing` reads a product page's own metadata through
+  the SSRF-guarded egress client, composes a brief deterministically (no model
+  writes the copy), reports the source of every field, warns instead of inventing a
+  claim, and queues one real render per format.
+- **MCP access.** `studio/mcp.py` and `scripts/preset_mcp.py` expose the catalogue,
+  the Director's compiler and the prompt-layer dataset as five read-only tools over
+  stdio. No tool can spend, and the dispatcher holds no credential.
+
+783 tests pass. Three test defects surfaced and were fixed rather than worked
+around: the contract test collapsed every route parameter to `{id}` (so no
+two-parameter route could ever match), the marketing prompt used the page's
+description where the author's claim belonged, and the mock adapter derived its
+output kind from the job modality rather than from the model.
+
 ### One product: the two front doors are merged
 
 The repository shipped two apps that shared a dataset and nothing else: a static

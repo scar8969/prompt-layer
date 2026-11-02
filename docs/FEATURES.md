@@ -21,7 +21,7 @@ to claim:
 
 | Higgsfield | Here | Notes |
 |---|---|---|
-| Text-to-image with 50+ style presets | **Built** | 40 image presets, each a sourced prompt template with settings, a frame and required references. The library is a visual grid with category filters; the catalogue ships no preview images, so a tile says "no preview" rather than faking one. |
+| Text-to-image with 50+ style presets | **Built** | 40 image presets, each a sourced prompt template with settings, a frame and required references. The library is a visual grid with category filters; a tile is a deterministic style card until this workspace spends its own key on a preview, and then it is the real render, labelled as such. |
 | Soul (their own fashion/cinema model) | **Not built** | We do not train or host models. You connect Nano Banana, Seedream, FLUX, Qwen, Gemini image or any fal endpoint and get the same control. |
 | Soul Reference (lock a look from an image) | **Built** | Reference images with a role — `composition`, `style`, `character_identity`, `color_palette`, `pose`, `lighting` — attached per request, gated on what the model declares. |
 | Soul ID (train an identity from 20–80 photos) | **Partial** | A character stores a description and reference images; casting it appends the description to the prompt and attaches its references. No training, so the face is locked by references, not by weights. |
@@ -42,11 +42,11 @@ to claim:
 | Image-to-video from a keyframe | **Built** | `image_to_video` with a first-frame reference. |
 | First/last frame control (Wan-style) | **Wired to your key** | `first_frame` / `first_last_frame` modes, each gated on declaration. |
 | DoP camera presets (bullet time, crash zoom, orbit, FPV) | **Partial** | 12 camera moves with the wording each adds, plus 30 video presets that carry camera settings. The move is a control in the studio, not a grid of VFX tiles bound to models. |
-| Cinema Studio (camera body, lens, aperture, genre, era, tempo, lighting, palette, emotion wheel, 50 refs, 30 s) | **Partial** | A model's `parameter_schema` can carry any of those fields and the studio renders them; multi-shot and first/last-frame modes exist. There is no Director's-Panel UI. |
+| Cinema Studio (camera body, lens, aperture, genre, era, tempo, lighting, palette, emotion wheel, 50 refs, 30 s) | **Built** | The Director's Panel (`/cinema`) compiles body, glass, light and grade into one prompt, clause by clause, and `POST /api/cinema/compile` exposes the same compiler. Multi-shot and first/last-frame modes are declared per model. |
 | Extend a clip (sequel / prequel) | **Built** | `POST /api/generations/{id}/extend` with seconds and an optional continuation; the job screen has the form. |
 | Motion transfer from a reference video | **Wired to your key** | `motion_transfer` is a declared mode; no UI flow yet. |
 | Recast / face swap | **Not built** | Provider-specific; would need its own adapter with a known wire format. |
-| Lipsync, talking avatar, voiceover, translation | **Not built** | No audio pipeline, no TTS/ASR provider, no lip-sync model. |
+| Lipsync, talking avatar, voiceover, translation | **Wired to your key** | `POST /api/generations/{id}/audio` with `lip_sync`, `voiceover` or `dub`; the job screen has the form. A lip sync is refused without a track and a voiceover without a script. No audio model is hosted here: the mode runs only on a model you connect that declares it. |
 | Video upscale, frame interpolation, deflicker | **Not built** | These are their own models; none is connected here. |
 | Restyle a clip | **Built** | `POST /api/generations/{id}/transform` with `restyle` / `video_to_video` / `style_transfer`, gated on the model. |
 | Reframe for each aspect ratio | **Wired to your key** | Aspect ratio per generation; batch reframe is not a feature. |
@@ -60,28 +60,33 @@ to claim:
 | Cinema multi-shot scene | **Wired to your key** | `multi_shot` and `scene_continuation` modes. |
 | Projects, assets, history, cost records | **Built** | Plus per-request usage rows that record what the provider charged, when it said. |
 | Trending / community feed | **Not built** | Needs other people's generations; there is no public feed here. |
-| Canvas: node pipelines, realtime collaboration | **Not built** | Jobs are linear, with retry, variations and derived requests. |
-| Marketing Studio, UGC factory, Fashion factory | **Not built** | Product-URL-to-ad and UGC campaigns are their own product surface. |
+| Canvas: node pipelines, realtime collaboration | **Partial** | `/canvas` saves a validated DAG of generate and note nodes, runs it node by node, and refuses a cycle by naming the nodes on it. Each node is one ordinary generation job, and a node is queued only after its upstream has a stored output. Realtime multi-user collaboration is not built. |
+| Marketing Studio, UGC factory, Fashion factory | **Partial** | `/marketing` reads a product page's own metadata, composes a brief deterministically (no model writes the copy), and queues one real render per format. The UGC and fashion campaign factories — scripted multi-scene shoots — are not built. |
 | Credits and plans | **Not built, on purpose** | You spend your own provider account. The platform's billing mode is `byok` and it says so. |
-| MCP access to the preset catalogue | **Not built** | The HTTP API is the surface; an MCP server would be a thin wrapper over `/api/prompt/catalog`. |
+| MCP access to the preset catalogue | **Built** | `studio/mcp.py` plus `scripts/preset_mcp.py` expose five read-only tools over stdio: list/get presets, compile a brief, list camera moves, read prompt layers. No tool can spend, and the dispatcher holds no credential. |
 
 ---
 
 ## What "all the features" would still cost
 
-In order of what a user would notice first, and without pretending any of it is
-one commit:
+What is done, and what remains. The four items that were named here — previews, a
+Director's Panel, audio, a canvas — are built; what is left is smaller, and one
+item is deliberately not attempted.
 
-1. **Previews for presets.** 70 presets, 0 images. This is the single biggest
-   difference from Higgsfield: their presets are pictures, ours are sentences. It
-   needs either a connected provider to render one frame per preset (cheap, honest,
-   and it would light up the grid) or a committed asset per preset.
-2. **A Director's Panel.** Camera body, lens, aperture, lighting, palette, emotion —
-   all of it is expressible as a model's `parameter_schema` today; the panel is
-   interface work, not a new backend.
-3. **Audio.** Lipsync, voiceover, translation-dubbing: a new provider family and a
-   new job kind (media in, media + track out).
-4. **A canvas.** Node graph over the existing routes, with saved pipelines.
+1. **Previews for presets — built, per workspace.** A tile is a real frame once the
+   workspace spends its own key to render one (`POST /api/presets/{id}/preview`),
+   and a style card before that. What is still missing is a *shipped* preview set:
+   70 presets with no render look like a catalogue, not a gallery, until somebody
+   runs them. That is a deliberate cost decision, not a missing feature.
+2. **A Director's Panel — built.** `/cinema` compiles body, glass, light, grade and
+   mood into one prompt with a per-clause ledger. What it does not do is bind a VFX
+   preset to a model's own effect id; that needs a provider that publishes one.
+3. **Audio — routed to your key.** Voiceover, dub and lip sync exist as derived
+   jobs with their own requirements. No audio model is hosted, so a workspace with
+   no audio-capable provider sees a disabled control and the reason.
+4. **A canvas — built for a DAG.** Nodes and edges, a topological order, upstream
+   outputs feeding downstream requests. Collaboration and node-level branching on
+   a condition are not built.
 5. **Anything that needs our own weights** — Soul, Soul ID's training, DoP's VFX:
    a fine-tuning pipeline and a GPU budget, which is exactly what a BYO-key platform
-   is designed to avoid.
+   is designed to avoid. Still not attempted, still on purpose.

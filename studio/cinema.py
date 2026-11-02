@@ -26,6 +26,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 from .adapters.base import CAMERA_MOVES_BY_KEY
+from .errors import VALIDATION_FAILED, ApiError
 
 # ---------------------------------------------------------------------------
 # Option shape
@@ -656,6 +657,45 @@ def _join(parts: Sequence[str]) -> str:
     if len(items) == 1:
         return items[0]
     return ", ".join(items[:-1]) + " and " + items[-1]
+
+
+def validate_brief(brief: Mapping[str, Any]) -> None:
+    """Refuse a choice outside the panel's vocabulary, by name.
+
+    One implementation, called by the HTTP route and the MCP tool. A compiler
+    that silently ignored an unknown option would produce a prompt missing a
+    clause the caller believes it sent -- and the ledger would look complete.
+    """
+    for group in (
+        "shots",
+        "angles",
+        "compositions",
+        "bodies",
+        "lenses",
+        "focal_lengths",
+        "apertures",
+        "shutters",
+        "lighting",
+        "palettes",
+        "grain",
+        "moods",
+        "aspects",
+    ):
+        value = _clean(brief.get(group))
+        if value and option(group, value) is None:
+            raise ApiError(
+                VALIDATION_FAILED,
+                "Unknown option '%s' for %s." % (value, group),
+                field=group,
+            )
+    movement = _clean(brief.get("movement"))
+    if movement and movement not in set(MOVEMENTS):
+        raise ApiError(VALIDATION_FAILED, "Unknown camera move '%s'." % movement, field="movement")
+    modality = _clean(brief.get("modality")) or "image"
+    if modality not in ("image", "video"):
+        raise ApiError(
+            VALIDATION_FAILED, "'modality' must be 'image' or 'video'.", field="modality"
+        )
 
 
 def compile_brief(brief: Mapping[str, Any]) -> Dict[str, Any]:

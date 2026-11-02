@@ -102,32 +102,9 @@ def register_routes(router: Any, app: Any) -> None:
 
         # A choice outside the vocabulary is refused by name rather than silently
         # dropped: if the client sends a stale key, the prompt would quietly lose
-        # a clause and the ledger would look complete.
-        for group in (
-            "shots",
-            "angles",
-            "compositions",
-            "bodies",
-            "lenses",
-            "focal_lengths",
-            "apertures",
-            "shutters",
-            "lighting",
-            "palettes",
-            "grain",
-            "moods",
-            "aspects",
-        ):
-            value = brief.get(group)
-            if value and cinema.option(group, str(value)) is None:
-                raise ApiError(
-                    VALIDATION_FAILED,
-                    "Unknown option '%s' for %s." % (value, group),
-                    field=group,
-                )
-        movement = brief.get("movement")
-        if movement and movement not in {item for item in cinema.MOVEMENTS}:
-            raise ApiError(VALIDATION_FAILED, "Unknown camera move '%s'." % movement, field="movement")
+        # a clause and the ledger would look complete. The MCP tool calls the same
+        # helper, so the two surfaces cannot drift.
+        cinema.validate_brief(brief)
 
         result = cinema.compile_brief(brief)
         return Response.json(

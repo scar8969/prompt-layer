@@ -361,7 +361,10 @@ def gif_bytes(
 
 def for_modality(seed: str, modality: str) -> Tuple[bytes, str, int, int, int]:
     """The bytes, content type, size and frame count for one modality."""
-    if (modality or "").strip().lower() == "video":
+    kind = (modality or "").strip().lower()
+    if kind == "audio":
+        return wav_bytes(seed), "audio/wav", 0, 0, 0
+    if kind == "video":
         width, height = DEFAULT_VIDEO_SIZE
         return gif_bytes(seed, width, height), "image/gif", width, height, DEFAULT_GIF_FRAMES
     return (
@@ -373,11 +376,36 @@ def for_modality(seed: str, modality: str) -> Tuple[bytes, str, int, int, int]:
     )
 
 
+def wav_bytes(seed: str, *, seconds: float = 1.0, rate: int = 8000) -> bytes:
+    """A short deterministic tone, as a real RIFF/WAVE file.
+
+    The development provider needs an audio file whose bytes a media sniffer will
+    recognise, so the audio asset path can be exercised without a live provider.
+    It is a tone, not speech, and every surface that shows it says so.
+    """
+    import math
+    import struct
+
+    digest = hashlib.sha256((seed or "studio").encode("utf-8")).digest()
+    frequency = 220 + (digest[0] % 12) * 40
+    frames = int(rate * seconds)
+    samples = bytearray()
+    for index in range(frames):
+        envelope = min(1.0, index / 200.0, (frames - index) / 200.0)
+        value = int(12000 * envelope * math.sin(2 * math.pi * frequency * index / rate))
+        samples.extend(struct.pack("<h", value))
+    data = bytes(samples)
+    header = b"RIFF" + struct.pack("<I", 36 + len(data)) + b"WAVE"
+    fmt = b"fmt " + struct.pack("<IHHIIHH", 16, 1, 1, rate, rate * 2, 2, 16)
+    chunk = b"data" + struct.pack("<I", len(data)) + data
+    return header + fmt + chunk
+
+
 def write_placeholder(directory: str, seed: str, modality: str = "image") -> Placeholder:
     """Write the placeholder to a directory, atomically, and describe it."""
     payload, content_type, width, height, frames = for_modality(seed, modality)
     os.makedirs(directory, exist_ok=True)
-    suffix = ".gif" if content_type == "image/gif" else ".png"
+    suffix = ".wav" if content_type == "audio/wav" else ".gif" if content_type == "image/gif" else ".png"
     stem = hashlib.sha256((seed or "studio").encode("utf-8")).hexdigest()[:20]
     path = os.path.join(directory, "mock-" + stem + suffix)
     temporary = path + ".part"

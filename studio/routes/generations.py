@@ -57,9 +57,15 @@ def register_routes(router: Any, app: Any) -> None:
         result = app.generations.transform(request.session, request.params["id"], request.json())
         return queued(request, result)
 
+    def audio(request: RequestContext) -> Response:
+        """Queue a voiceover, dub or lip-sync derived from an existing clip."""
+        result = app.generations.audio(request.session, request.params["id"], request.json())
+        return queued(request, result)
+
     router.add("POST", "/api/generations/images", image)
     router.add("POST", "/api/generations/videos", video)
     router.add("POST", "/api/generations/{id}/variations", variations)
     router.add("POST", "/api/generations/{id}/edit", edit)
     router.add("POST", "/api/generations/{id}/extend", extend)
     router.add("POST", "/api/generations/{id}/transform", transform)
+    router.add("POST", "/api/generations/{id}/audio", audio)

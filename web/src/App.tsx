@@ -9,6 +9,8 @@ import { LoadingState } from './components/State.tsx';
 import { HomeScreen } from './features/home/HomeScreen.tsx';
 import { ExploreScreen } from './features/explore/ExploreScreen.tsx';
 import { CinemaScreen } from './features/cinema/CinemaScreen.tsx';
+import { CanvasScreen } from './features/canvas/CanvasScreen.tsx';
+import { MarketingScreen } from './features/marketing/MarketingScreen.tsx';
 import { PromptLabScreen } from './features/prompt/PromptLabScreen.tsx';
 import { ImageStudioScreen } from './features/image-studio/ImageStudioScreen.tsx';
 import { VideoStudioScreen } from './features/video-studio/VideoStudioScreen.tsx';
@@ -37,6 +39,8 @@ function ScreenForPath({ path }: { path: string }) {
   if (matchPath('/', path)) return <HomeScreen />;
   if (matchPath('/explore', path)) return <ExploreScreen />;
   if (matchPath('/cinema', path)) return <CinemaScreen />;
+  if (matchPath('/canvas', path)) return <CanvasScreen />;
+  if (matchPath('/marketing', path)) return <MarketingScreen />;
   if (matchPath('/prompt', path)) return <PromptLabScreen />;
   if (matchPath('/image', path)) return <ImageStudioScreen />;
   if (matchPath('/video', path)) return <VideoStudioScreen />;

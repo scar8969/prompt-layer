@@ -66,20 +66,32 @@ def client_paths() -> dict:
     return found
 
 
+def _shape(path: str) -> str:
+    """A path with every parameter replaced by the same placeholder.
+
+    Two routes differ by their static segments and their segment count, not by
+    what a parameter is called: `/api/canvases/{id}/runs/{runId}` and
+    `/api/canvases/{id}/runs/{id}` are the same address. Comparing the literal
+    names made a two-parameter route impossible to satisfy from the client,
+    which is a defect in this test rather than in either side of the contract.
+    """
+    return re.sub(r"\{[^}]+\}", "{}", path)
+
+
 def test_the_client_calls_only_routes_the_server_serves(route_table):
-    served = {item["path"] for item in route_table}
+    served = {_shape(item["path"]) for item in route_table}
     called = client_paths()
     assert called, "no /api/ literals found; the endpoint module changed shape"
-    missing = sorted(path for path in called if path not in served)
+    missing = sorted(path for path in called if _shape(path) not in served)
     assert missing == [], "the client calls routes that are not served: %r" % (missing,)
 
 
 def test_every_call_site_finds_a_method(route_table):
     by_path = {}
     for item in route_table:
-        by_path.setdefault(item["path"], set()).add(item["method"])
+        by_path.setdefault(_shape(item["path"]), set()).add(item["method"])
     for path in client_paths():
-        assert by_path.get(path), "no method registered for %s" % path
+        assert by_path.get(_shape(path)), "no method registered for %s" % path
 
 
 @pytest.mark.parametrize(

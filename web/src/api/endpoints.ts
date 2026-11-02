@@ -6,6 +6,13 @@ import type {
   BillingInfo,
   CameraMoveOption,
   Capabilities,
+  Canvas,
+  CanvasEdge,
+  CanvasNode,
+  CanvasNodeStateEntry,
+  CanvasRun,
+  CanvasSummary,
+  AudioGenerationInput,
   Character,
   CharacterReference,
   CinemaVocabulary,
@@ -22,6 +29,9 @@ import type {
   JobEvent,
   JobState,
   JobListResponse,
+  MarketingBrief,
+  MarketingCampaign,
+  MarketingFormat,
   MeResponse,
   Model,
   ModelCapabilitiesResponse,
@@ -31,6 +41,7 @@ import type {
   ModeVocabulary,
   PreflightParam,
   Preset,
+  PresetPreview,
   Project,
   PromptCatalogEntry,
   PromptCatalogModel,
@@ -422,9 +433,25 @@ function readPreset(raw: unknown): Preset {
     camera: isRecord(r.camera_settings) ? r.camera_settings : null,
     notes: str(r.notes),
     thumbnail_url: str(r.thumbnail_url),
+    preview: isRecord(r.preview) ? readPresetPreview(r.preview) : null,
     is_favorite: false,
     created_at: str(r.created_at),
     updated_at: str(r.updated_at) ?? undefined,
+  };
+}
+
+function readPresetPreview(raw: unknown): PresetPreview {
+  const r = isRecord(raw) ? raw : {};
+  return {
+    preset_key: str(r.preset_key) ?? '',
+    job_id: str(r.job_id) ?? '',
+    status: str(r.status) ?? '',
+    model_id: str(r.model_id) ?? '',
+    asset_id: str(r.asset_id),
+    url: str(r.url),
+    thumbnail_url: str(r.thumbnail_url),
+    error: str(r.error) ?? '',
+    created_at: str(r.created_at),
   };
 }
 
@@ -770,6 +797,19 @@ export const generations = {
     });
     return readJob(envelope(payload, 'job'));
   },
+  /**
+   * A sound operation on an existing clip: voiceover, dub, lip sync.
+   *
+   * The queue treats it like any other derived request -- a new job, with its
+   * own cost and its own output -- so nothing about the parent is replaced.
+   */
+  async audio(jobId: string, input: AudioGenerationInput): Promise<Job> {
+    const payload = await apiRequest<unknown>(`/api/generations/${encodeURIComponent(jobId)}/audio`, {
+      method: 'POST',
+      body: input,
+    });
+    return readJob(envelope(payload, 'job'));
+  },
 };
 
 /* ------------------------------------------------------------------- jobs */
@@ -1042,6 +1082,26 @@ export const presets = {
       body: { favorite },
     });
     return readPreset(envelope(payload, 'preset'));
+  },
+  /**
+   * Spend this workspace's own key on one real frame for a preset.
+   *
+   * Returns the queued job, not the picture: the render goes through the same
+   * queue as any other generation, so it takes as long as the provider takes.
+   * The gallery reads the result back from the preset's `preview` field.
+   */
+  async renderPreview(id: string, modelId: string): Promise<Job> {
+    const payload = await apiRequest<unknown>(`/api/presets/${encodeURIComponent(id)}/preview`, {
+      method: 'POST',
+      body: { model_id: modelId },
+    });
+    return readJob(envelope(payload, 'job'));
+  },
+  async previews(id: string, signal?: AbortSignal): Promise<PresetPreview[]> {
+    const payload = await apiRequest<unknown>(`/api/presets/${encodeURIComponent(id)}/previews`, {
+      signal,
+    });
+    return arr(envelope(payload, 'previews')).map(readPresetPreview);
   },
 };
 
@@ -1531,6 +1591,257 @@ export const cinema = {
       modality: str(compiled.modality) ?? input.modality,
       aspect_ratio: str(compiled.aspect_ratio) ?? '',
       storyboard_hint: str(compiled.storyboard_hint) ?? '',
+    };
+  },
+};
+
+/* ------------------------------------------------------------------ canvas */
+
+function readCanvasNode(raw: unknown): CanvasNode {
+  const r = isRecord(raw) ? raw : {};
+  const position = isRecord(r.position) ? r.position : {};
+  return {
+    id: str(r.id) ?? '',
+    kind: (str(r.kind) as CanvasNode['kind']) ?? 'generate',
+    label: str(r.label) ?? '',
+    position: { x: num(position.x) ?? 0, y: num(position.y) ?? 0 },
+    text: str(r.text) ?? undefined,
+    prompt: str(r.prompt) ?? undefined,
+    negative_prompt: str(r.negative_prompt) ?? undefined,
+    model_id: str(r.model_id) ?? undefined,
+    mode: str(r.mode) ?? undefined,
+    parameters: isRecord(r.parameters) ? r.parameters : undefined,
+    count: num(r.count) ?? undefined,
+  };
+}
+
+function readCanvasEdge(raw: unknown): CanvasEdge {
+  const r = isRecord(raw) ? raw : {};
+  return {
+    from: str(r.from) ?? '',
+    to: str(r.to) ?? '',
+    role: (str(r.role) as CanvasEdge['role']) ?? 'input',
+    reference_role: str(r.reference_role) ?? undefined,
+  };
+}
+
+function readCanvasSummary(raw: unknown): CanvasSummary {
+  const r = isRecord(raw) ? raw : {};
+  return {
+    node_count: num(r.node_count) ?? 0,
+    edge_count: num(r.edge_count) ?? 0,
+    generate_count: num(r.generate_count) ?? 0,
+    note_count: num(r.note_count) ?? 0,
+    order: strList(r.order),
+    stages: arr(r.stages).map((item) => {
+      const s = isRecord(item) ? item : {};
+      return {
+        node_id: str(s.node_id) ?? '',
+        label: str(s.label) ?? '',
+        kind: str(s.kind) ?? '',
+      };
+    }),
+  };
+}
+
+function readCanvas(raw: unknown): Canvas {
+  const r = isRecord(raw) ? raw : {};
+  return {
+    id: str(r.id) ?? '',
+    workspace_id: str(r.workspace_id) ?? '',
+    created_by_user_id: str(r.created_by_user_id) ?? '',
+    name: str(r.name) ?? 'Untitled canvas',
+    description: str(r.description) ?? '',
+    nodes: arr(r.nodes).map(readCanvasNode),
+    edges: arr(r.edges).map(readCanvasEdge),
+    created_at: str(r.created_at) ?? '',
+    updated_at: str(r.updated_at) ?? '',
+    summary: isRecord(r.summary) ? readCanvasSummary(r.summary) : undefined,
+  };
+}
+
+function readCanvasRun(raw: unknown): CanvasRun {
+  const r = isRecord(raw) ? raw : {};
+  const states: Record<string, CanvasNodeStateEntry> = {};
+  if (isRecord(r.node_states)) {
+    for (const [key, value] of Object.entries(r.node_states)) {
+      const e = isRecord(value) ? value : {};
+      states[key] = {
+        status: str(e.status) ?? 'pending',
+        job_id: str(e.job_id) ?? '',
+        asset_id: str(e.asset_id) ?? '',
+        error: str(e.error) ?? '',
+      };
+    }
+  }
+  return {
+    id: str(r.id) ?? '',
+    canvas_id: str(r.canvas_id) ?? '',
+    workspace_id: str(r.workspace_id) ?? '',
+    status: str(r.status) ?? 'queued',
+    node_states: states,
+    order: strList(r.order),
+    error: str(r.error) ?? '',
+    started_at: str(r.started_at),
+    finished_at: str(r.finished_at),
+    created_at: str(r.created_at) ?? '',
+    updated_at: str(r.updated_at) ?? '',
+    next_node: str(r.next_node) ?? undefined,
+    node_order: strList(r.node_order),
+  };
+}
+
+export const canvases = {  async list(signal?: AbortSignal): Promise<Canvas[]> {
+    const payload = await apiRequest<unknown>('/api/canvases', { signal });
+    return arr(envelope(payload, 'canvases')).map(readCanvas);
+  },
+  async get(id: string, signal?: AbortSignal): Promise<Canvas> {
+    const payload = await apiRequest<unknown>(`/api/canvases/${encodeURIComponent(id)}`, { signal });
+    return readCanvas(envelope(payload, 'canvas'));
+  },
+  async create(input: { name: string; description?: string; nodes: CanvasNode[]; edges: CanvasEdge[] }): Promise<Canvas> {
+    const payload = await apiRequest<unknown>('/api/canvases', { method: 'POST', body: input });
+    return readCanvas(envelope(payload, 'canvas'));
+  },
+  async patch(
+    id: string,
+    input: Partial<Pick<Canvas, 'name' | 'description' | 'nodes' | 'edges'>>,
+  ): Promise<Canvas> {
+    const payload = await apiRequest<unknown>(`/api/canvases/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: input,
+    });
+    return readCanvas(envelope(payload, 'canvas'));
+  },
+  async remove(id: string): Promise<void> {
+    await apiRequest<unknown>(`/api/canvases/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+  async startRun(id: string): Promise<CanvasRun> {
+    const payload = await apiRequest<unknown>(`/api/canvases/${encodeURIComponent(id)}/runs`, {
+      method: 'POST',
+    });
+    return readCanvasRun(envelope(payload, 'run'));
+  },
+  async getRun(canvasId: string, runId: string, signal?: AbortSignal): Promise<CanvasRun> {
+    const payload = await apiRequest<unknown>(
+      `/api/canvases/${encodeURIComponent(canvasId)}/runs/${encodeURIComponent(runId)}`,
+      { signal },
+    );
+    return readCanvasRun(envelope(payload, 'run'));
+  },
+  async runs(canvasId: string, signal?: AbortSignal): Promise<CanvasRun[]> {
+    const payload = await apiRequest<unknown>(`/api/canvases/${encodeURIComponent(canvasId)}/runs`, {
+      signal,
+    });
+    return arr(envelope(payload, 'runs')).map(readCanvasRun);
+  },
+};
+
+/* --------------------------------------------------------------- marketing */
+
+function readMarketingBrief(raw: unknown): MarketingBrief {
+  const r = isRecord(raw) ? raw : {};
+  return {
+    product: str(r.product) ?? '',
+    url: str(r.url) ?? '',
+    site_name: str(r.site_name) ?? '',
+    description: str(r.description) ?? '',
+    features: strList(r.features),
+    image_reference: str(r.image_reference) ?? '',
+    audience: str(r.audience) ?? '',
+    benefit: str(r.benefit) ?? '',
+    tone: str(r.tone) ?? 'direct',
+    hook: str(r.hook) ?? '',
+    hooks: arr(r.hooks).map((item) => {
+      const h = isRecord(item) ? item : {};
+      return { tone: str(h.tone) ?? '', text: str(h.text) ?? '' };
+    }),
+    formats: arr(r.formats).map((item) => {
+      const f = isRecord(item) ? item : {};
+      return {
+        key: str(f.key) ?? '',
+        label: str(f.label) ?? '',
+        aspect_ratio: str(f.aspect_ratio) ?? '',
+        headline: str(f.headline) ?? '',
+        caption: str(f.caption) ?? '',
+        prompt: str(f.prompt) ?? '',
+      };
+    }),
+    warnings: strList(r.warnings),
+    sources: isRecord(r.sources) ? (r.sources as Record<string, string>) : {},
+    notes: isRecord(r.notes) ? (r.notes as Record<string, string>) : {},
+  };
+}
+
+export const marketing = {
+  async formats(signal?: AbortSignal): Promise<{ formats: MarketingFormat[]; tones: string[] }> {
+    const payload = await apiRequest<unknown>('/api/marketing/formats', { signal });
+    const record = isRecord(payload) ? payload : {};
+    return {
+      formats: arr(record.formats).map((item) => {
+        const f = isRecord(item) ? item : {};
+        return {
+          key: str(f.key) ?? '',
+          label: str(f.label) ?? '',
+          aspect_ratio: str(f.aspect_ratio) ?? '',
+          headline: '',
+          caption: '',
+          prompt: '',
+        };
+      }),
+      tones: strList(record.tones),
+    };
+  },
+  async brief(input: {
+    url?: string;
+    title?: string;
+    description?: string;
+    site_name?: string;
+    image?: string;
+    features?: string[];
+    audience?: string;
+    benefit?: string;
+    tone?: string;
+  }): Promise<{ brief: MarketingBrief; facts: Record<string, unknown> }> {
+    const payload = await apiRequest<unknown>('/api/marketing/brief', { method: 'POST', body: input });
+    const record = isRecord(payload) ? payload : {};
+    return {
+      brief: readMarketingBrief(record.brief),
+      facts: isRecord(record.facts) ? (record.facts as Record<string, unknown>) : {},
+    };
+  },
+  async campaign(input: {
+    model_id: string;
+    formats?: string[];
+    url?: string;
+    title?: string;
+    description?: string;
+    site_name?: string;
+    features?: string[];
+    audience?: string;
+    benefit?: string;
+    tone?: string;
+    project_id?: string | null;
+  }): Promise<MarketingCampaign> {
+    const payload = await apiRequest<unknown>('/api/marketing/campaigns', { method: 'POST', body: input });
+    const record = isRecord(payload) ? payload : {};
+    const campaign = isRecord(record.campaign) ? record.campaign : {};
+    return {
+      brief: readMarketingBrief(campaign.brief),
+      model_id: str(campaign.model_id) ?? '',
+      project_id: str(campaign.project_id),
+      renders: arr(campaign.renders).map((item) => {
+        const r = isRecord(item) ? item : {};
+        return {
+          format: str(r.format) ?? '',
+          label: str(r.label) ?? '',
+          aspect_ratio: str(r.aspect_ratio) ?? '',
+          headline: str(r.headline) ?? '',
+          caption: str(r.caption) ?? '',
+          prompt: str(r.prompt) ?? '',
+          job_id: str(r.job_id) ?? '',
+        };
+      }),
     };
   },
 };

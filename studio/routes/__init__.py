@@ -4,7 +4,21 @@ from __future__ import annotations
 
 from typing import Any
 
-from . import assets, auth, cinema, connections, generations, jobs, library, models, prompt, system
+from . import (
+    assets,
+    auth,
+    canvas,
+    cinema,
+    connections,
+    generations,
+    jobs,
+    library,
+    models,
+    marketing,
+    previews,
+    prompt,
+    system,
+)
 
 
 def register_routes(router: Any, app: Any) -> None:
@@ -26,6 +40,9 @@ def register_routes(router: Any, app: Any) -> None:
         library,
         prompt,
         cinema,
+        previews,
+        canvas,
+        marketing,
     ):
         module.register_routes(router, app)
 

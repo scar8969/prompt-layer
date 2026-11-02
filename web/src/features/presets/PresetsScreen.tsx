@@ -16,6 +16,7 @@ import { invalidate } from '../../state/query.ts';
 import { useToasts } from '../../state/toasts.tsx';
 import { useQuery } from '../../state/query.ts';
 import { formatDateTime, titleCase, truncate } from '../../lib/util.ts';
+import { PresetArt, PresetArtBadge, RenderPreviewButton } from './PresetPreview.tsx';
 
 type Tab = 'presets' | 'prompts';
 
@@ -173,9 +174,12 @@ function PresetPanel() {
             return (
               <div className="asset-tile" key={preset.id}>
                 <span className="asset-tile__media">
-                  {preset.thumbnail_url ? (
-                    <img src={preset.thumbnail_url} alt={`Preview of ${preset.name}`} loading="lazy" />
-                  ) : (
+                  <PresetArt
+                    preset={preset}
+                    alt={`${preset.name} — ${preset.preview?.status === 'completed' ? 'your render' : 'style card'}`}
+                  />
+                  <PresetArtBadge preset={preset} />
+                  {!preset.thumbnail_url && !preset.preview ? (
                     <span
                       aria-hidden="true"
                       className="dim"
@@ -183,7 +187,7 @@ function PresetPanel() {
                     >
                       {preset.modality === 'video' ? 'motion' : 'still'} · no preview
                     </span>
-                  )}
+                  ) : null}
                 </span>
                 <span className="asset-tile__body">
                   <span className="asset-tile__name">{preset.name}</span>
@@ -209,6 +213,13 @@ function PresetPanel() {
                   >
                     Open
                   </Link>
+                  <RenderPreviewButton
+                    preset={preset}
+                    onRendered={() => {
+                      invalidate('presets');
+                      presets.reload();
+                    }}
+                  />
                   {preset.is_builtin ? (
                     <Badge tone="accent">built-in</Badge>
                   ) : (

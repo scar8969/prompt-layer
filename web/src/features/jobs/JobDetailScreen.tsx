@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { assets as assetsApi, jobs as jobsApi, generations } from '../../api/endpoints.ts';
-import type { Asset, Job, JobEvent } from '../../api/types.ts';
+import { assets as assetsApi, jobs as jobsApi, generations, models as modelsApi } from '../../api/endpoints.ts';
+import type { Asset, Job, JobEvent, Model } from '../../api/types.ts';
 import { Badge, MockBadge } from '../../components/Badge.tsx';
 import { Button } from '../../components/Button.tsx';
 import { Select, TextInput } from '../../components/Field.tsx';
@@ -29,7 +29,7 @@ export function JobDetailScreen({ jobId }: { jobId: string }) {
   const [eventError, setEventError] = useState<unknown>(null);
   const [actionError, setActionError] = useState<unknown>(null);
   const [pending, setPending] = useState<
-    'cancel' | 'retry' | 'variations' | 'edit' | 'extend' | 'transform' | null
+    'cancel' | 'retry' | 'variations' | 'edit' | 'extend' | 'transform' | 'audio' | null
   >(null);
   // Derived requests: an edit works on one of this job's outputs, an extension
   // continues a clip, a transform restyles it. Each is a new job with its own cost.
@@ -42,6 +42,11 @@ export function JobDetailScreen({ jobId }: { jobId: string }) {
   const [extendPrompt, setExtendPrompt] = useState('');
   const [transformMode, setTransformMode] = useState('restyle');
   const [transformPrompt, setTransformPrompt] = useState('');
+  const [audioMode, setAudioMode] = useState<'voiceover' | 'dub' | 'lip_sync' | 'audio'>('voiceover');
+  const [audioScript, setAudioScript] = useState('');
+  const [audioLanguage, setAudioLanguage] = useState('');
+  const [audioTrackId, setAudioTrackId] = useState('');
+  const [audioModelId, setAudioModelId] = useState('');
   const [variationCount, setVariationCount] = useState(2);
   const [selectedOutput, setSelectedOutput] = useState(0);
 
@@ -76,6 +81,19 @@ export function JobDetailScreen({ jobId }: { jobId: string }) {
   );
   const imageAssets = imageAssetsQuery.data ?? [];
 
+  // The tracks a lip sync can match. Read from the library rather than guessed:
+  // an audio asset exists only because somebody uploaded one.
+  const audioAssetsQuery = useQuery<Asset[]>(
+    'assets?kind=audio&limit=40&track-picker',
+    async () => (await assetsApi.list({ kind: 'audio', limit: 40 })).assets,
+    { staleMs: 30_000 },
+  );
+  const audioAssets = audioAssetsQuery.data ?? [];
+
+  const models = useQuery<Model[]>('models?enabled=1&audio-ops', () => modelsApi.list({ enabled: true }), {
+    staleMs: 30_000,
+  });
+
   useEffect(() => {
     if (!job || !terminal) return;
     let cancelled = false;
@@ -92,7 +110,7 @@ export function JobDetailScreen({ jobId }: { jobId: string }) {
     };
   }, [job?.id, terminal, job?.state]);
 
-  const run = async (kind: 'cancel' | 'retry' | 'variations' | 'edit' | 'extend' | 'transform') => {
+  const run = async (kind: 'cancel' | 'retry' | 'variations' | 'edit' | 'extend' | 'transform' | 'audio') => {
     if (!job) return;
     setPending(kind);
     setActionError(null);
@@ -128,10 +146,21 @@ export function JobDetailScreen({ jobId }: { jobId: string }) {
         invalidate('jobs');
         toasts.push({ tone: 'info', title: 'Extension queued', text: `New job ${next.id}` });
         navigate(`/history/${next.id}`);
-      } else {
+      } else if (kind === 'transform') {
         const next = await generations.transform(job.id, { mode: transformMode, prompt: transformPrompt.trim() });
         invalidate('jobs');
         toasts.push({ tone: 'info', title: 'Transform queued', text: `New job ${next.id}` });
+        navigate(`/history/${next.id}`);
+      } else {
+        const next = await generations.audio(job.id, {
+          mode: audioMode,
+          script: audioScript.trim() || undefined,
+          language: audioMode === 'dub' ? audioLanguage.trim() || undefined : undefined,
+          track_asset_id: audioMode === 'lip_sync' ? audioTrackId || undefined : undefined,
+          model_id: audioModelId || undefined,
+        });
+        invalidate('jobs');
+        toasts.push({ tone: 'info', title: 'Sound operation queued', text: `New job ${next.id}` });
         navigate(`/history/${next.id}`);
       }
     } catch (err) {
@@ -369,6 +398,91 @@ export function JobDetailScreen({ jobId }: { jobId: string }) {
         {events && !events.length ? (
           <p className="muted" style={{ margin: 0 }}>The backend returned no events for this job.</p>
         ) : null}
+      </Section>
+
+      <Section title="Sound on this clip">
+        <p className="muted" style={{ margin: 0 }}>
+          A voiceover, a dub, a lip sync and a generated track are derived requests: each queues a new job
+          on the model you choose, and none replaces this output.
+        </p>
+        <div className="grid grid--2">
+          <Select
+            label="Operation"
+            value={audioMode}
+            onChange={(event) => setAudioMode(event.target.value as 'voiceover' | 'dub' | 'lip_sync' | 'audio')}
+            options={[
+              { value: 'voiceover', label: 'voiceover — speak a script over the clip' },
+              { value: 'dub', label: 'dub — replace the speech in another language' },
+              { value: 'lip_sync', label: 'lip_sync — match the mouth to a track' },
+              { value: 'audio', label: 'audio — generate a track from the clip' },
+            ]}
+            hint="Each requires a model that declares the mode; none is assumed from the clip."
+          />
+          {audioMode === 'lip_sync' ? (
+            <Select
+              label="Audio track"
+              value={audioTrackId}
+              onChange={(event) => setAudioTrackId(event.target.value)}
+              placeholder={audioAssets.length ? 'Choose the track…' : 'No audio asset in the library yet'}
+              options={audioAssets.map((asset) => ({ value: asset.id, label: asset.name }))}
+              hint="Upload the track first. Lip sync is refused without one, because the mouth must match a real waveform."
+            />
+          ) : (
+            <Select
+              label="Model"
+              value={audioModelId}
+              onChange={(event) => setAudioModelId(event.target.value)}
+              placeholder="Use this job's model"
+              options={(models.data ?? [])
+                .filter((model) => model.modality === 'video')
+                .map((model) => ({ value: model.id, label: model.display_name }))}
+              hint="Leave empty to use the model that produced this clip."
+            />
+          )}
+        </div>
+        {audioMode === 'dub' ? (
+          <TextInput
+            label="Target language"
+            value={audioLanguage}
+            onChange={(event) => setAudioLanguage(event.target.value)}
+            placeholder="French"
+            hint="Appended to the script as a target-language instruction."
+          />
+        ) : null}
+        {audioMode !== 'lip_sync' && audioMode !== 'audio' ? (
+          <TextInput
+            label="Script"
+            value={audioScript}
+            onChange={(event) => setAudioScript(event.target.value)}
+            placeholder="the words the voice should say"
+            hint="Sent as the prompt of the derived job."
+          />
+        ) : null}
+        <Button
+          onClick={() => void run('audio')}
+          disabled={
+            !canDerive ||
+            pending !== null ||
+            job.kind !== 'video' ||
+            (audioMode === 'lip_sync' && !audioTrackId) ||
+            ((audioMode === 'voiceover' || audioMode === 'dub') && !audioScript.trim())
+          }
+          disabledReason={
+            job.kind !== 'video'
+              ? 'A sound operation works on a video output.'
+              : audioMode === 'lip_sync' && !audioTrackId
+                ? 'Lip sync needs an audio track.'
+                : (audioMode === 'voiceover' || audioMode === 'dub') && !audioScript.trim()
+                  ? 'Say what the voice should say.'
+                  : 'The job must have succeeded.'
+          }
+        >
+          {pending === 'audio' ? 'Queueing…' : 'Queue the sound operation'}
+        </Button>
+        <p className="dim" style={{ margin: 0, fontSize: 'var(--fs-xs)' }}>
+          A voiceover returns a track; a dub and a lip sync return a clip with sound. The stored asset's kind
+          comes from the bytes the provider returned, not from this form.
+        </p>
       </Section>
 
       <Section title="Derived requests">

@@ -6,6 +6,7 @@ import { Icon } from '../../components/Icon.tsx';
 import { useQuery } from '../../state/query.ts';
 import { useToasts } from '../../state/toasts.tsx';
 import { titleCase } from '../../lib/util.ts';
+import { PresetArt, PresetArtBadge, RenderPreviewButton } from '../presets/PresetPreview.tsx';
 
 /**
  * Explore.
@@ -87,6 +88,12 @@ export function ExploreScreen() {
   const all = useMemo(() => [...(images.data ?? []), ...(videos.data ?? [])], [images.data, videos.data]);
   const loading = images.loading || videos.loading;
   const error = images.error ?? videos.error;
+
+  // The open dialog should follow the reloaded catalogue: after a render the
+  // preset it is showing has new art, and the dialog must not keep the old copy.
+  useEffect(() => {
+    setOpen((current) => (current ? all.find((item) => item.id === current.id) ?? current : current));
+  }, [all]);
 
   const categories = useMemo(() => {
     const counts = new Map<string, number>();
@@ -291,15 +298,23 @@ export function ExploreScreen() {
           onUse={() => openStudio(open, false)}
           onRun={() => openStudio(open, true)}
           onCopy={() => void copyPrompt(open)}
+          onRendered={() => {
+            images.reload();
+            videos.reload();
+          }}
         />
       ) : null}
     </div>
   );
 }
 
+/** What the tile is actually showing, said plainly. */
+function previewKind(preset: Preset): string {
+  return preset.preview?.status === 'completed' ? 'your render' : 'style card';
+}
+
 /** The frame's proportions, so the wall reads like a contact sheet. */
-function aspectOf(preset: Preset): string {
-  const raw = preset.aspect_ratio ?? (preset.modality === 'video' ? '16:9' : '4:5');
+function aspectOf(preset: Preset): string {  const raw = preset.aspect_ratio ?? (preset.modality === 'video' ? '16:9' : '4:5');
   const [w, h] = raw.split(':').map((value) => Number(value));
   if (!w || !h) return preset.modality === 'video' ? '16 / 9' : '4 / 5';
   return `${w} / ${h}`;
@@ -326,14 +341,13 @@ function LookCard({
       }
     }}>
       <div className="hf-card__media" style={{ aspectRatio: aspectOf(preset) }}>
-        {preset.thumbnail_url ? (
-          <img src={preset.thumbnail_url} alt={`Style card for ${preset.name}`} loading="lazy" />
-        ) : null}
+        <PresetArt preset={preset} alt={`${preset.name} — ${previewKind(preset)}`} />
         <span className="hf-card__scrim" />
         <span className="hf-card__tag">
           <Icon name={preset.modality === 'video' ? 'video' : 'image'} size={11} />
           {preset.modality === 'video' ? 'motion' : 'still'}
         </span>
+        <PresetArtBadge preset={preset} />
         <span className="hf-card__actions">
           <button
             type="button"
@@ -399,12 +413,14 @@ function LookDetail({
   onUse,
   onRun,
   onCopy,
+  onRendered,
 }: {
   preset: Preset;
   onClose: () => void;
   onUse: () => void;
   onRun: () => void;
   onCopy: () => void;
+  onRendered: () => void;
 }) {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -423,9 +439,7 @@ function LookDetail({
     <div className="hf-modal" role="dialog" aria-modal="true" aria-label={preset.name} onClick={onClose}>
       <div className="hf-modal__panel" onClick={(event) => event.stopPropagation()}>
         <div className="hf-modal__art">
-          {preset.thumbnail_url ? (
-            <img src={preset.thumbnail_url} alt={`Style card for ${preset.name}`} />
-          ) : null}
+          <PresetArt preset={preset} alt={`${preset.name} — ${previewKind(preset)}`} />
           <button type="button" className="hf-iconbtn hf-modal__close" onClick={onClose} aria-label="Close">
             <Icon name="close" size={14} />
           </button>
@@ -434,7 +448,8 @@ function LookDetail({
         <div className="hf-modal__body">
           <div>
             <p className="hf-eyebrow" style={{ marginBottom: 8 }}>
-              {titleCase(preset.category ?? '')} · {preset.modality === 'video' ? 'video' : 'image'} · style card
+              {titleCase(preset.category ?? '')} · {preset.modality === 'video' ? 'video' : 'image'} ·{' '}
+              {previewKind(preset)}
             </p>
             <h2 className="hf-display hf-display--md" style={{ marginBottom: 10 }}>
               {preset.name}
@@ -459,6 +474,7 @@ function LookDetail({
             <Link to={`/cinema?look=${encodeURIComponent(preset.id)}`} className="hf-btn">
               <Icon name="clapper" size={13} /> Shape it
             </Link>
+            <RenderPreviewButton preset={preset} onRendered={onRendered} />
           </div>
 
           <div>
@@ -500,7 +516,9 @@ function LookDetail({
             <dd>{(preset.tags ?? []).join(' · ') || '—'}</dd>
             <dt>About the art</dt>
             <dd style={{ color: 'var(--text-dim)' }}>
-              A style card generated from this preset's own words. It is not a render, and it does not predict one.
+              {preset.preview?.status === 'completed'
+                ? 'A real frame rendered on this workspace’s own provider key. The model and the date are recorded with the job.'
+                : 'A style card generated from this preset’s own words. It is not a render, and it does not predict one.'}
             </dd>
           </dl>
         </div>

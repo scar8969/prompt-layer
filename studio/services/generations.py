@@ -295,6 +295,8 @@ class GenerationService:
                 entry["kind"] = str(asset.get("kind") or "") or (
                     "video"
                     if str(asset.get("mime_type") or "").startswith("video/")
+                    else "audio"
+                    if str(asset.get("mime_type") or "").startswith("audio/")
                     else "image"
                 )
             else:
@@ -396,6 +398,9 @@ class GenerationService:
             "max_attempts": self.config.jobs.max_attempts,
             "cost_estimate": estimate.to_public() if estimate is not None else {},
             "idempotency_key": idempotency_key or None,
+            # A preview render is an ordinary job that remembers which catalogue
+            # preset it was made for. Empty for every other job.
+            "preset_key": str(payload.get("preset_key") or "").strip(),
         }
         job = self.repos.jobs.create(session.workspace_id, session.user_id, row)
         self.repos.audit.record(
@@ -578,4 +583,68 @@ class GenerationService:
         self.repos.jobs.link_parent(
             session.workspace_id, str(job.get("id") or ""), job_id, "transform"
         )
+        return result
+
+    def audio(self, session: Any, job_id: str, payload: Mapping[str, Any]) -> Dict[str, Any]:
+        """Queue a sound operation derived from an existing clip.
+
+        Three operations share one route because they share one shape: a source
+        clip goes in, a track or a clip with a track comes out, and the model has
+        to declare the mode. A **voiceover** speaks a script over the clip, a
+        **dub** replaces the speech in another language, and a **lip sync** makes
+        the mouth match a supplied track. Which one is asked for is the `mode`,
+        and nothing is inferred from the presence of a field.
+        """
+        parent = self._parent(session, job_id)
+        mode = str(payload.get("mode") or "voiceover").strip().lower()
+        if mode not in ("voiceover", "dub", "lip_sync", "audio"):
+            raise ApiError(
+                VALIDATION_FAILED,
+                "An audio operation must be voiceover, dub, lip_sync or audio.",
+                field="mode",
+            )
+        references = self._derived_references(parent, "reference_video")
+        if mode == "lip_sync":
+            track_id = str(payload.get("track_asset_id") or "").strip()
+            if not track_id:
+                raise ApiError(
+                    VALIDATION_FAILED,
+                    "Lip sync needs the audio track the mouth should match.",
+                    field="track_asset_id",
+                    hint="Upload the track to the library, then choose it here.",
+                )
+            self.repos.assets.get(session.workspace_id, track_id)
+            references.append({"asset_id": track_id, "role": "audio_track"})
+        script = str(payload.get("script") or payload.get("prompt") or "").strip()
+        if mode in ("voiceover", "dub") and not script:
+            raise ApiError(
+                VALIDATION_FAILED,
+                "Say what the voice should say." if mode == "voiceover" else "Give the dub a script or a target language.",
+                field="script",
+            )
+        if mode == "dub":
+            language = str(payload.get("language") or "").strip()
+            if language:
+                script = "%s Target language: %s." % (script, language)
+        merged = {
+            "model_id": payload.get("model_id") or parent.get("model_id"),
+            "mode": mode,
+            "prompt": script or parent.get("prompt") or "",
+            "parameters": dict(
+                json_loads(parent.get("parameters_json") or "{}", {}),
+                **(payload.get("parameters") or {}),
+            ),
+            "references": references,
+            "count": 1,
+            "project_id": parent.get("project_id"),
+        }
+        result = self.queue(
+            session, merged, modality=str(parent.get("modality") or "video"), mode=mode
+        )
+        job = result.get("job") or {}
+        self.repos.jobs.link_parent(
+            session.workspace_id, str(job.get("id") or ""), job_id, "audio"
+        )
+        job["parent_job_id"] = job_id
+        job["relation"] = "audio"
         return result
