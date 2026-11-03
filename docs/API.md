@@ -250,6 +250,25 @@ answers without a network call, and every surface that shows its output is
 required to carry `is_mock: true`. The other three have never been run against
 a live provider; see `docs/LIMITATIONS.md`.
 
+### One-key onboarding and conversation
+
+| method | path | auth | body | success key | error codes |
+|---|---|---|---|---|---|
+| POST | `/api/onboarding/discover` | yes (admin) | `{name?, base_url, api_key, probe_chat?, allowed_hosts?}` | `plan{provider, models[], counts, default_chat, probe_summary?, warnings[], notes}` | `validation_failed`, `network_restricted`, `malformed_url`, `insecure_url`, `forbidden` |
+| POST | `/api/onboarding/register` | yes (admin) | `{name?, base_url, api_key, models:[{model_key, family, display_name?}], default_chat?, allowed_hosts?}` | `connection`, `connections[]`, `models[]`, `default_chat_model_id`, `default_chat`, `notes` | `validation_failed`, `network_restricted`, `configuration_required`, `forbidden` |
+| GET | `/api/chat/models` | yes | - | `models[]`, `default_model_id`, `notes{billing}` | `unauthenticated` |
+| POST | `/api/chat` | yes (editor) | `{model_id, messages:[{role, content}], max_tokens?, temperature?}` | `model_id`, `model_key`, `message{role,content}`, `finish_reason`, `usage`, `latency_ms`, `provider{...}` | `validation_failed`, `capability_unsupported`, `configuration_required`, `provider_error`, `network_error`, `invalid_response` |
+
+Discovery writes nothing. It reads `/v1/models` (falling back to `/models`), classifies each entry -- a capability the provider declares wins, otherwise a family table matches the id -- and, when `probe_chat` is not false, sends one one-token turn to at most 24 conversation models in parallel. `available` is therefore the provider's answer, not the presence of an id. Image and video models are never probed by default: one image call can cost more than every chat probe combined.
+
+Registration stores one connection per wire protocol, because a connection is one protocol:
+
+* conversation -- `declarative_http` with a synchronous mapping, or riding on a media connection when one exists (the chat route reads the base URL and key itself);
+* images -- `openai_images`;
+* video -- `declarative_http` carrying the OpenAI-videos mapping (`OPENAI_VIDEOS_SPEC`), whose result route returns bytes while submit and status return JSON.
+
+Audio, embedding, rerank and moderation models are reported in the plan and refused by name at register time. Nothing is registered as a button that cannot work. When the endpoint lists `deepseek-v4.1-flash`, it becomes the workspace default conversation model; otherwise the first chat model does, and the response says the requested one was absent.
+
 ### Models
 
 | method | path | auth | body / query | success key | error codes |

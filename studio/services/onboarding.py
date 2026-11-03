@@ -6,12 +6,15 @@ The flow has two halves and one rule.
   :mod:`studio.discovery`) and -- by default -- sends one one-token turn to every
   conversation model, so "available" means the provider answered, not that the id
   appeared in a list.
-* **Register** creates one connection with the sealed key and records the models
-  the user confirmed. Conversation models are registered as `other`; image models
-  as `image` with the modes the OpenAI-images protocol always has.
+* **Register** creates one connection per protocol with the sealed key and records
+  the models the user confirmed. Conversation models are registered as `other`
+  (they are driven by the chat route, not an adapter); image models as `image`
+  on the OpenAI-images adapter; video models as `video` on the OpenAI-videos
+  adapter. One key and one URL therefore become one, two or three connection
+  records -- one per wire protocol, which is what a connection means here.
 * **The rule**: a model this build cannot drive is reported, never registered as
-  a button that cannot work. Video and audio models from a generic aggregator need
-  a wire format this repository does not have, and the response says so.
+  a button that cannot work. Audio and the non-generation families from a
+  generic aggregator have no adapter here, and the response says so.
 
 Chat probes are cheap but not free. They are capped, bounded and labelled; image
 and video probes are opt-in because one image call can cost more than every chat
@@ -21,7 +24,7 @@ probe on the page combined.
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Dict, List, Mapping, Optional, Sequence
+from typing import Any, Dict, List, Mapping, Sequence
 
 from .. import discovery
 from ..errors import VALIDATION_FAILED, ApiError
@@ -41,7 +44,31 @@ MAX_CHAT_PROBES = 24
 PROBE_WORKERS = 6
 PROBE_TIMEOUT_SECONDS = 8.0
 
-MODEL_LIST_PATHS = ("/models", "/v1/models")
+#: The adapter type stored for each family. Only types this database can store
+#: are used: images have a dedicated adapter, while chat and video are
+#: declarative connections carrying the mapping that is true for that protocol.
+#: A connection stores one protocol, so one key becomes one record per family
+#: (chat rides on a media connection when there is one, because chat reads the
+#: base URL and key itself and needs no adapter).
+ADAPTER_BY_FAMILY: Dict[str, str] = {
+    discovery.CHAT: "declarative_http",
+    discovery.IMAGE: "openai_images",
+    discovery.VIDEO: "declarative_http",
+}
+
+#: Short suffixes for the connections created from one key.
+CONNECTION_SUFFIX: Dict[str, str] = {
+    discovery.CHAT: "chat",
+    discovery.IMAGE: "images",
+    discovery.VIDEO: "video",
+}
+
+#: The defaults each family is registered with. Video is deliberately narrow:
+#: the OpenAI-videos mapping expresses text to video and nothing else yet.
+FAMILY_MODES: Dict[str, Sequence[str]] = {
+    discovery.IMAGE: ("text_to_image", "image_to_image"),
+    discovery.VIDEO: ("text_to_video",),
+}
 
 
 def _text(value: Any, limit: int = 200) -> str:
@@ -220,58 +247,80 @@ class OnboardingService:
         if not chosen:
             raise ApiError(VALIDATION_FAILED, "Choose at least one model to register.", field="models")
 
-        adapter_type = (
-            "openai_images" if any(item["family"] == discovery.IMAGE for item in chosen) else "declarative_http"
-        )
-        create_payload: Dict[str, Any] = {
-            "name": name,
-            "adapter_type": adapter_type,
-            "base_url": base_url,
-            "auth_scheme": "bearer",
-            "credential": api_key,
-            "allowed_hosts": clean_allowed_hosts(payload.get("allowed_hosts")),
-            "models": [],
-        }
-        if adapter_type == "declarative_http":
-            # A chat-only connection has no generation mapping to describe, but a
-            # declarative provider without one is refused at save time -- correctly,
-            # because a queued provider that cannot say where to submit is a button
-            # that cannot work. The conversation protocol is the one mapping that is
-            # true here: one POST, the answer already in the response.
-            create_payload["mapping"] = {
-                "structure": "sync",
-                "submit": {
-                    "path": discovery.api_root(base_url) + "/chat/completions",
-                    "prompt_field": "messages",
-                    "model_field": "model",
-                },
-                "response": {"type": "json", "outputs_path": "choices.0.message.content"},
-            }
-        created = self.connections.create(session, create_payload)
-        connection = created["connection"]
-        registered: List[Dict[str, Any]] = []
+        groups: Dict[str, List[Dict[str, Any]]] = {}
         for item in chosen:
-            if item["family"] == discovery.CHAT:
-                model_payload = {
-                    "model_key": item["model_key"],
-                    "display_name": item["display_name"] or item["model_key"],
-                    "modality": "other",
-                    "modes": [],
-                    "source": "discovered",
-                }
-            else:
-                model_payload = {
-                    "model_key": item["model_key"],
-                    "display_name": item["display_name"] or item["model_key"],
-                    "modality": "image",
-                    "modes": ["text_to_image", "image_to_image"],
-                    "capabilities": {"max_outputs": 4},
-                    "source": "discovered",
-                }
-            registered.append(
-                self.connections.add_model(session, str(connection["id"]), model_payload)
-            )
+            groups.setdefault(item["family"], []).append(item)
 
+        # Chat does not need an adapter: the chat route reads the connection's
+        # base URL and key itself. So when a media protocol exists, its models
+        # ride on that connection rather than opening a second one with the same
+        # URL and key. A chat-only registration gets its own declarative
+        # connection carrying the one mapping that is true: one POST, the answer
+        # already in the response.
+        media_families = [f for f in (discovery.IMAGE, discovery.VIDEO) if f in groups]
+        order = media_families + ([discovery.CHAT] if discovery.CHAT in groups else [])
+        chat_ride = bool(media_families) and discovery.CHAT in groups
+
+        names = _connection_names(name, order, collapse_chat=chat_ride)
+        created: List[Dict[str, Any]] = []
+        registered: List[Dict[str, Any]] = []
+        models_by_connection: Dict[str, List[Dict[str, Any]]] = {family: [] for family in order}
+
+        for family in order:
+            if family == discovery.CHAT and chat_ride:
+                continue
+            adapter_type = ADAPTER_BY_FAMILY[family]
+            create_payload: Dict[str, Any] = {
+                "name": names[family],
+                "adapter_type": adapter_type,
+                # The fixed image and video mappings carry /v1 in their paths, so
+                # their base is the host root; a pasted .../v1 would double it.
+                "base_url": base_url if family == discovery.CHAT else discovery.host_root(base_url),
+                "auth_scheme": "bearer",
+                "credential": api_key,
+                "allowed_hosts": clean_allowed_hosts(payload.get("allowed_hosts")),
+                "models": [],
+            }
+            if family == discovery.CHAT:
+                create_payload["mapping"] = {
+                    "structure": "sync",
+                    "submit": {
+                        "path": discovery.api_root(base_url) + "/chat/completions",
+                        "prompt_field": "messages",
+                        "model_field": "model",
+                    },
+                    "response": {"type": "json", "outputs_path": "choices.0.message.content"},
+                }
+            elif family == discovery.VIDEO:
+                # The OpenAI-videos shape, declared as data and used through the
+                # generic declarative adapter. A dedicated provider type would
+                # need a new value in the database's adapter check, which this
+                # build does not have; the mapping is the same thing without a
+                # schema change.
+                from ..adapters.declarative import OPENAI_VIDEOS_SPEC
+
+                create_payload["mapping"] = OPENAI_VIDEOS_SPEC
+            connection = self.connections.create(session, create_payload)["connection"]
+            created.append(connection)
+            connection_id = str(connection["id"])
+            models_by_connection[family] = [
+                self.connections.add_model(session, connection_id, _model_payload(item))
+                for item in groups[family]
+            ]
+            registered.extend(models_by_connection[family])
+
+        if chat_ride:
+            host_family = media_families[0]
+            host_connection = created[media_families.index(host_family)]
+            models_by_connection[discovery.CHAT] = [
+                self.connections.add_model(
+                    session, str(host_connection["id"]), _model_payload(item)
+                )
+                for item in groups[discovery.CHAT]
+            ]
+            registered.extend(models_by_connection[discovery.CHAT])
+
+        primary = created[0]
         default_model_id = ""
         chat_models = [
             model
@@ -292,20 +341,87 @@ class OnboardingService:
             session.user_id,
             "connection.onboarded",
             target_type="connection",
-            target_id=str(connection["id"]),
+            target_id=str(primary["id"]),
             request_id="",
             ip_hash="",
-            detail={"models": len(registered), "adapter_type": adapter_type},
+            detail={
+                "models": len(registered),
+                "connections": len(created),
+                "families": order,
+            },
         )
         return {
-            "connection": connection,
+            "connection": primary,
+            "connections": created,
             "models": registered,
+            "models_by_family": models_by_connection,
             "default_chat_model_id": default_model_id,
             "default_chat": default_chat,
             "notes": {
-                "adapter": (
-                    "openai_images" if adapter_type == "openai_images" else "declarative_http"
+                "adapter": ", ".join(str(item.get("adapter_type") or "") for item in created),
+                "split": (
+                    "One key became %d connections because a connection is one wire "
+                    "protocol: %s." % (len(created), ", ".join(order))
+                    if len(created) > 1
+                    else "One connection drives every model registered here."
                 ),
-                "spend": "Registering costs nothing. Chat is billed per token; images per request.",
+                "chat": (
+                    "Conversation models share the %s connection; chat does not use "
+                    "its generation mapping." % media_families[0]
+                    if chat_ride
+                    else "Conversation has its own declarative connection."
+                ),
+                "spend": "Registering costs nothing. Chat is billed per token; images per request; video per generation.",
             },
         }
+
+
+def _connection_names(base: str, families: Sequence[str], *, collapse_chat: bool = False) -> Dict[str, str]:
+    """A name per family: bare when there is only one, suffixed when split.
+
+    Chat riding on a media connection does not count as a split, because it adds
+    no protocol record of its own.
+    """
+    shown = [family for family in families if not (collapse_chat and family == discovery.CHAT)]
+    if len(shown) <= 1:
+        return {family: base for family in families}
+    return {
+        family: "%s (%s)" % (base, CONNECTION_SUFFIX.get(family, family)) for family in families
+    }
+
+
+def _model_payload(item: Mapping[str, Any]) -> Dict[str, Any]:
+    """What one discovered model becomes in the registry, per family.
+
+    The modes are the narrowest honest set: an image endpoint that follows the
+    OpenAI images protocol can edit from a reference; the videos mapping in this
+    build expresses text to video only. Nothing claims a mode that has not been
+    mapped.
+    """
+    model_key = str(item["model_key"])
+    display_name = str(item.get("display_name") or model_key)
+    family = str(item["family"])
+    if family == discovery.CHAT:
+        return {
+            "model_key": model_key,
+            "display_name": display_name,
+            "modality": "other",
+            "modes": [],
+            "source": "discovered",
+        }
+    if family == discovery.VIDEO:
+        return {
+            "model_key": model_key,
+            "display_name": display_name,
+            "modality": "video",
+            "modes": list(FAMILY_MODES[family]),
+            "source": "discovered",
+        }
+    return {
+        "model_key": model_key,
+        "display_name": display_name,
+        "modality": "image",
+        "modes": list(FAMILY_MODES[family]),
+        "capabilities": {"max_outputs": 4},
+        "source": "discovered",
+    }

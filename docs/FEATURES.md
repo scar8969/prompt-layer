@@ -62,6 +62,8 @@ to claim:
 | Trending / community feed | **Not built** | Needs other people's generations; there is no public feed here. |
 | Canvas: node pipelines, realtime collaboration | **Partial** | `/canvas` saves a validated DAG of generate and note nodes, runs it node by node, and refuses a cycle by naming the nodes on it. Each node is one ordinary generation job, and a node is queued only after its upstream has a stored output. Collaboration is conflict-safe rather than live: every save carries the revision it read, a stale save is a 409 naming the current revision, and an idle editor adopts newer revisions by polling. Live cursors and presence are not built. |
 | Marketing Studio, UGC factory, Fashion factory | **Built** | `/marketing` reads a product page's own metadata, composes a brief deterministically (no model writes the copy), and queues one real render per format. The factories (`/api/factories`) plan a UGC shoot, a fashion lookbook or a photodump into a canvas of shots; planning and saving are free, and only running the canvas queues jobs. |
+| One key, every model the endpoint lists | **Built** | `/onboard` reads the provider's own `/v1/models`, classifies every id (declared capability first, name table second), and probes up to 24 conversation models with one one-token turn. It writes nothing until you confirm. Registering stores one connection per wire protocol and only families this build can drive: conversation (`other`), images (`openai_images`), video (the OpenAI-videos mapping). Audio, embedding, rerank and moderation models are reported with the reason they are not registered. |
+| Chat on your own key | **Built** | `/chat` sends a bounded conversation to a registered conversation model — `deepseek-v4.1-flash` when the endpoint lists it — through the connection's own base URL and key. Provider failures pass through with their status; usage and latency are shown. No turn is fabricated and no model is silently substituted. |
 | Credits and plans | **Not built, on purpose** | You spend your own provider account. The platform's billing mode is `byok` and it says so. |
 | MCP access to the preset catalogue | **Built** | `studio/mcp.py` plus `scripts/preset_mcp.py` expose five read-only tools over stdio: list/get presets, compile a brief, list camera moves, read prompt layers. No tool can spend, and the dispatcher holds no credential. |
 
@@ -88,6 +90,14 @@ item is deliberately not attempted.
    topological order, upstream outputs feeding downstream requests, and a revision
    on every save so two editors cannot silently overwrite each other. Live cursors
    and presence are not built.
-5. **Anything that needs our own weights** — Soul, Soul ID's training, DoP's VFX:
+5. **Video on a generic aggregator — one mapping, text to video.** The
+   OpenAI-videos shape (`POST /v1/videos`, poll `GET /v1/videos/{id}`, fetch bytes
+   from `/content`) is registered as a declarative mapping and the clip is stored
+   as a normal asset. Only text to video is claimed: the reference-image upload is
+   multipart and this mapping does not express it. No live credential for such an
+   endpoint was available while this was written, so no real clip has been
+   produced through it here; an endpoint that speaks a different video protocol
+   will fail at submit with the provider's own error, not a fake result.
+6. **Anything that needs our own weights** — Soul, Soul ID's training, DoP's VFX:
    a fine-tuning pipeline and a GPU budget, which is exactly what a BYO-key platform
    is designed to avoid. Still not attempted, still on purpose.

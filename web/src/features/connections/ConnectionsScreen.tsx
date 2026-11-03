@@ -48,6 +48,12 @@ export function ConnectionsScreen() {
           </p>
         </div>
         <div className="page__actions">
+          <Link to="/onboard" className="btn btn--sm">
+            <span className="btn__icon">
+              <Icon name="key" size={14} />
+            </span>
+            One key, all models
+          </Link>
           <Button size="sm" onClick={() => { connections.reload(); adapters.reload(); }}>
             Refresh
           </Button>

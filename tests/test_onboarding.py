@@ -244,9 +244,11 @@ def test_the_proposal_marks_only_drivable_families_as_drivable():
     by_key = {item["model_key"]: item for item in plan["models"]}
     assert by_key["deepseek-v4.1-flash"]["drivable"] is True
     assert by_key["gpt-image-2"]["drivable"] is True
-    assert by_key["kling-v3"]["drivable"] is False
+    assert by_key["kling-v3"]["drivable"] is True
     assert by_key["whisper-1"]["drivable"] is False
     assert by_key["text-embedding-3-small"]["drivable"] is False
+    assert by_key["kling-v3"]["modality"] == "video"
+    assert by_key["kling-v3"]["modes"] == ["text_to_video"]
     assert by_key["kling-v3"]["reason"]
     assert plan["default_chat"] == "deepseek-v4.1-flash"
     assert plan["counts"][discovery.CHAT] == 3
@@ -273,7 +275,7 @@ def test_discovery_reads_the_list_and_probes_the_chat_models(client, provider):
     status, body = _discover(client, provider)
     assert status == 200, body
     plan = body["plan"]
-    assert plan["provider"]["base_url"] == provider
+    assert plan["provider"]["base_url"].rstrip("/") == provider
     assert plan["default_chat"] == "deepseek-v4.1-flash"
     assert plan["probe_summary"] == {"probed": 3, "available": 2, "failed": 1, "max_probes": 24}
     by_key = {item["model_key"]: item for item in plan["models"]}
@@ -326,7 +328,7 @@ def test_registering_creates_one_connection_and_the_chosen_models(client, provid
     assert status == 201, body
     connection = body["connection"]
     assert connection["adapter_type"] == "openai_images"
-    assert connection["base_url"] == provider
+    assert connection["base_url"].rstrip("/") == provider
     assert connection["has_credential"] is True
     keys = {model["model_key"]: model for model in body["models"]}
     assert keys["deepseek-v4.1-flash"]["modality"] == "other"
@@ -341,11 +343,47 @@ def test_registering_refuses_a_family_this_build_cannot_drive(client, provider):
     status, body = _register(
         client,
         provider,
-        [{"model_key": "kling-v3", "family": "video"}],
+        [{"model_key": "whisper-1", "family": "audio"}],
     )
     assert status == 400, body
     assert body["error"]["field"] == "models"
     assert "cannot drive" in body["error"]["message"]
+
+
+def test_registering_video_gets_its_own_protocol_connection(client, provider):
+    """One key, two protocols: images and video are different wire formats."""
+    status, body = _register(
+        client,
+        provider,
+        [
+            {"model_key": "deepseek-v4.1-flash", "family": "chat"},
+            {"model_key": "gpt-image-2", "family": "image"},
+            {"model_key": "kling-v3", "family": "video", "display_name": "Kling V3"},
+        ],
+    )
+    assert status == 201, body
+    adapters = [item["adapter_type"] for item in body["connections"]]
+    assert adapters == ["openai_images", "declarative_http"]
+    assert body["connection"]["adapter_type"] == "openai_images"
+    keys = {model["model_key"]: model for model in body["models"]}
+    video = keys["kling-v3"]
+    assert video["modality"] == "video"
+    assert video["modes"] == ["text_to_video"]
+    # Chat rode on the images connection rather than opening a third one.
+    assert keys["deepseek-v4.1-flash"]["connection_id"] == body["connections"][0]["id"]
+    assert body["default_chat_model_id"] == keys["deepseek-v4.1-flash"]["id"]
+    assert body["notes"]["adapter"] == "openai_images, declarative_http"
+
+
+def test_registering_video_alone_uses_the_videos_mapping(client, provider):
+    status, body = _register(
+        client,
+        provider,
+        [{"model_key": "kling-v3", "family": "video"}],
+    )
+    assert status == 201, body
+    assert len(body["connections"]) == 1
+    assert body["connection"]["adapter_type"] == "declarative_http"
 
 
 def test_registration_requires_selected_models(client, provider):

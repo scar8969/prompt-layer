@@ -22,6 +22,10 @@ import type {
   ConnectionCreateInput,
   ConnectionPatchInput,
   ConnectionTestResult,
+  ChatReply,
+  ChatTurn,
+  DiscoveredModel,
+  DiscoveryPlan,
   EditGenerationInput,
   ExtendGenerationInput,
   ImageGenerationInput,
@@ -29,7 +33,11 @@ import type {
   JobEvent,
   JobState,
   JobListResponse,
+  OnboardingDiscoverInput,
+  OnboardingRegisterInput,
+  OnboardingRegisterResult,
   MarketingBrief,
+
   MarketingCampaign,
   MarketingFormat,
   MeResponse,
@@ -202,7 +210,7 @@ export function readModel(raw: unknown): Model {
   };
 }
 
-function readConnection(raw: unknown): Connection {
+export function readConnection(raw: unknown): Connection {
   const r = isRecord(raw) ? raw : {};
   const credentialRaw = isRecord(r.credential) ? r.credential : {};
   return {
@@ -665,6 +673,149 @@ export const connections = {
       body: input,
     });
     return readModel(envelope(payload, 'model'));
+  },
+};
+
+/* ------------------------------------------------------------- onboarding */
+
+function readDiscovered(raw: unknown): DiscoveredModel {
+  const r = isRecord(raw) ? raw : {};
+  const probeRaw = isRecord(r.probe) ? r.probe : null;
+  return {
+    model_key: str(r.model_key) ?? '',
+    display_name: str(r.display_name) ?? str(r.model_key) ?? '',
+    family: str(r.family) ?? 'unknown',
+    drivable: bool(r.drivable) ?? false,
+    modality: str(r.modality) ?? 'other',
+    modes: strList(r.modes),
+    reason: str(r.reason) ?? '',
+    available: bool(r.available) ?? undefined,
+    probe: probeRaw
+      ? {
+          ok: bool(probeRaw.ok) ?? false,
+          latency_ms: num(probeRaw.latency_ms) ?? 0,
+          status: num(probeRaw.status) ?? undefined,
+          error: str(probeRaw.error) ?? undefined,
+        }
+      : undefined,
+  };
+}
+
+function readDiscoveryPlan(raw: unknown): DiscoveryPlan {
+  const r = isRecord(raw) ? raw : {};
+  const provider = isRecord(r.provider) ? r.provider : {};
+  const countsRaw = isRecord(r.counts) ? r.counts : {};
+  const counts: Record<string, number> = {};
+  for (const [key, value] of Object.entries(countsRaw)) {
+    const count = num(value);
+    if (count !== null) counts[key] = count;
+  }
+  const summary = isRecord(r.probe_summary) ? r.probe_summary : null;
+  const notesRaw = isRecord(r.notes) ? r.notes : {};
+  const notes: Record<string, string> = {};
+  for (const [key, value] of Object.entries(notesRaw)) {
+    const text = str(value);
+    if (text) notes[key] = text;
+  }
+  return {
+    provider: {
+      name: str(provider.name) ?? '',
+      base_url: str(provider.base_url) ?? '',
+      model_list_path: str(provider.model_list_path) ?? '',
+    },
+    models: arr(r.models).map(readDiscovered),
+    counts,
+    default_chat: str(r.default_chat) ?? '',
+    default_chat_requested: str(r.default_chat_requested) ?? '',
+    probe_summary: summary
+      ? {
+          probed: num(summary.probed) ?? 0,
+          available: num(summary.available) ?? 0,
+          failed: num(summary.failed) ?? 0,
+          max_probes: num(summary.max_probes) ?? 0,
+        }
+      : undefined,
+    warnings: strList(r.warnings),
+    notes,
+  };
+}
+
+export const onboarding = {
+  /**
+   * Read the endpoint's model list and probe its conversation models.
+   *
+   * This writes nothing. The result is the document the user reviews before the
+   * register call, which is why the two are separate requests.
+   */
+  async discover(input: OnboardingDiscoverInput, signal?: AbortSignal): Promise<DiscoveryPlan> {
+    const payload = await apiRequest<unknown>('/api/onboarding/discover', {
+      method: 'POST',
+      body: input,
+      signal,
+    });
+    return readDiscoveryPlan(envelope(payload, 'plan'));
+  },
+
+  async register(input: OnboardingRegisterInput): Promise<OnboardingRegisterResult> {
+    const payload = await apiRequest<unknown>('/api/onboarding/register', {
+      method: 'POST',
+      body: input,
+    });
+    const r = isRecord(payload) ? payload : {};
+    const notesRaw = isRecord(r.notes) ? r.notes : {};
+    const notes: Record<string, string> = {};
+    for (const [key, value] of Object.entries(notesRaw)) {
+      const text = str(value);
+      if (text) notes[key] = text;
+    }
+    return {
+      connection: readConnection(r.connection),
+      connections: arr(r.connections).map(readConnection),
+      models: arr(r.models).map(readModel),
+      default_chat_model_id: str(r.default_chat_model_id) ?? '',
+      default_chat: str(r.default_chat) ?? '',
+      notes,
+    };
+  },
+};
+
+/* ----------------------------------------------------------- conversation */
+
+export const chat = {
+  async models(signal?: AbortSignal): Promise<{ models: Model[]; defaultModelId: string; billing: string }> {
+    const payload = await apiRequest<unknown>('/api/chat/models', { signal });
+    const r = isRecord(payload) ? payload : {};
+    const notes = isRecord(r.notes) ? r.notes : {};
+    return {
+      models: arr(r.models).map(readModel),
+      defaultModelId: str(r.default_model_id) ?? '',
+      billing: str(notes.billing) ?? '',
+    };
+  },
+
+  async send(input: { model_id: string; messages: ChatTurn[]; max_tokens?: number; temperature?: number }): Promise<ChatReply> {
+    const payload = await apiRequest<unknown>('/api/chat', { method: 'POST', body: input });
+    const r = isRecord(payload) ? payload : {};
+    const message = isRecord(r.message) ? r.message : {};
+    const usage = isRecord(r.usage) ? r.usage : {};
+    const provider = isRecord(r.provider) ? r.provider : {};
+    return {
+      model_id: str(r.model_id) ?? '',
+      model_key: str(r.model_key) ?? '',
+      message: {
+        role: 'assistant',
+        content: str(message.content) ?? '',
+      },
+      finish_reason: str(r.finish_reason) ?? '',
+      usage,
+      latency_ms: num(r.latency_ms) ?? 0,
+      provider: {
+        connection_id: str(provider.connection_id) ?? '',
+        connection_name: str(provider.connection_name) ?? '',
+        base_url: str(provider.base_url) ?? '',
+        is_mock: bool(provider.is_mock) ?? false,
+      },
+    };
   },
 };
 

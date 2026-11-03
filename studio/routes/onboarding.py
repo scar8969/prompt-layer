@@ -34,6 +34,9 @@ def register_routes(router: Any, app: Any) -> None:
         return Response.json(
             {
                 "connection": _shape.connection(result["connection"]),
+                "connections": [
+                    _shape.connection(item) for item in result.get("connections") or []
+                ],
                 "models": [_shape.model(item) for item in result["models"]],
                 "default_chat_model_id": result["default_chat_model_id"],
                 "default_chat": result["default_chat"],

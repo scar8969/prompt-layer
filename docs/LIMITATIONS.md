@@ -67,6 +67,23 @@ added field produces a clear failure rather than an image. Polling is
 unnecessary because that API is synchronous, which is why the adapter walks
 `processing → downloading` in one pass instead of polling.
 
+### The OpenAI-videos mapping is implemented from the published shape
+
+The one-key onboarding registers video models on a declarative connection
+carrying `OPENAI_VIDEOS_SPEC`: `POST /v1/videos`, poll `GET /v1/videos/{id}` for
+`status` and `progress`, then fetch the finished clip as bytes from
+`/v1/videos/{id}/content`. The declarative engine gained a per-call response type
+for exactly this case, because submit and status are JSON while the result route
+is not.
+
+**No live credential for an OpenAI-videos endpoint was available while this was
+written, so no clip has been generated through it here.** Consequence: an
+aggregator that exposes video under a different protocol (many do) will fail at
+submit with that provider's own error; it will not return a fake clip. Only text
+to video is claimed -- the multipart reference-image upload is not expressed by
+this mapping -- and a model that needs a first frame is not registered with that
+mode.
+
 ### The declarative adapter fails rather than guesses
 
 A user-supplied mapping that is wrong produces a job failure with the provider

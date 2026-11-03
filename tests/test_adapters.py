@@ -1002,6 +1002,32 @@ def test_the_edit_preset_keeps_its_source_image_field():
     assert declarative.spec_summary(loaded)['reference_fields'] == ['image']
 
 
+def test_the_videos_preset_polls_for_a_job_and_fetches_the_clip_as_bytes():
+    """The OpenAI videos shape: JSON status, a binary content route.
+
+    This is the one mapping where the global response type cannot describe the
+    provider: submit and status answer in JSON, and the finished clip is bytes on
+    a separate route. The result block therefore overrides the response type.
+    """
+    loaded = declarative.preset_spec("openai_videos")
+    assert loaded["structure"] == "queued"
+    assert loaded["submit"]["path"].endswith("/videos")
+    assert loaded["status"]["status_path"] == "status"
+    assert loaded["result"]["inline_in_status"] is False
+    assert loaded["result"]["response_type"] == "binary"
+    assert loaded["response"]["type"] == "json"
+    assert declarative._wants_binary(loaded) is False
+    assert declarative._wants_binary(loaded, "result") is True
+
+
+def test_an_unknown_result_response_type_names_the_key():
+    """A typo in the per-block override must fail at save, not at download."""
+    spec = dict(declarative.OPENAI_VIDEOS_SPEC)
+    spec["result"] = dict(spec["result"], response_type="mp4")
+    error = refused(declarative.load_spec, spec)
+    assert error.details["key"] == "mapping.result.response_type"
+
+
 def test_preset_spec_refuses_an_unknown_preset_name():
     """The preset list is closed, and the error names the known ones."""
     error = refused(declarative.preset_spec, "midjourney")

@@ -7,6 +7,8 @@ import { SessionProvider, StatusProvider, useSession } from './state/session.tsx
 import { AuthScreen } from './features/auth/AuthScreen.tsx';
 import { LoadingState } from './components/State.tsx';
 import { HomeScreen } from './features/home/HomeScreen.tsx';
+import { ChatScreen } from './features/chat/ChatScreen.tsx';
+import { OnboardScreen } from './features/onboarding/OnboardScreen.tsx';
 import { ExploreScreen } from './features/explore/ExploreScreen.tsx';
 import { CinemaScreen } from './features/cinema/CinemaScreen.tsx';
 import { CanvasScreen } from './features/canvas/CanvasScreen.tsx';
@@ -37,6 +39,8 @@ const AUTH_ROUTES: { path: string; mode: 'login' | 'register' | 'forgot' | 'rese
 
 function ScreenForPath({ path }: { path: string }) {
   if (matchPath('/', path)) return <HomeScreen />;
+  if (matchPath('/chat', path)) return <ChatScreen />;
+  if (matchPath('/onboard', path)) return <OnboardScreen />;
   if (matchPath('/explore', path)) return <ExploreScreen />;
   if (matchPath('/cinema', path)) return <CinemaScreen />;
   if (matchPath('/canvas', path)) return <CanvasScreen />;

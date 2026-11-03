@@ -212,6 +212,12 @@ def _blank_spec() -> Dict[str, Any]:
             "id_path": "",
             "result_ready_path": "",
             "inline_in_status": True,
+            #: "json", "binary", or "" to inherit `response.type`. A provider can
+            #: answer the submit/status calls in JSON and the finished file in a
+            #: binary result route, which one global switch cannot express.
+            "response_type": "",
+            #: The content type to give the bytes a binary result returns.
+            "binary_content_type": "",
         },
         "response": {
             "type": "json",
@@ -618,6 +624,19 @@ def load_spec(raw: Any) -> Dict[str, Any]:
         "result_ready_path",
     ):
         result[name] = _clean_field(result.get(name), "mapping.result.%s" % name)
+    result_type = (
+        _clean_text(result.get("response_type"), "mapping.result.response_type", limit=20) or ""
+    )
+    result_type = result_type.lower()
+    if result_type and result_type not in RESPONSE_TYPES:
+        raise _fail(
+            "The result response type must be json or binary, or empty to inherit the response type.",
+            key="mapping.result.response_type",
+        )
+    result["response_type"] = result_type
+    result["binary_content_type"] = _clean_text(
+        result.get("binary_content_type"), "mapping.result.binary_content_type", limit=100
+    )
 
     response = spec["response"]
     response_type = (_clean_text(response.get("type"), "mapping.response.type", limit=20) or "json")
@@ -747,10 +766,47 @@ OPENAI_IMAGES_EDIT_SPEC: Dict[str, Any] = {
 }
 
 
+#: The OpenAI videos API: submit returns a job id, the id is polled for status,
+#: and the finished clip is fetched as bytes from the content route. Declared as
+#: a preset so the wizard can offer it by name and so the shape is readable as
+#: data, the same way the images preset is.
+OPENAI_VIDEOS_SPEC: Dict[str, Any] = {
+    "structure": "queued",
+    "submit": {
+        "path": "/v1/videos",
+        "method": "POST",
+        "body_type": "json",
+        "model_field": "model",
+        "prompt_field": "prompt",
+        "extra_fields": {},
+        "references": [],
+    },
+    "status": {
+        "path": "/v1/videos/{request_id}",
+        "method": "GET",
+        "status_path": "status",
+        "progress_path": "progress",
+        "poll_after_seconds": 3.0,
+    },
+    "result": {
+        #: The clip comes back as a file, not as a URL in the status payload.
+        "path": "/v1/videos/{request_id}/content",
+        "method": "GET",
+        "inline_in_status": False,
+        "response_type": "binary",
+        "binary_content_type": "video/mp4",
+    },
+    "response": {"type": "json"},
+    "models": {"path": "/v1/models", "ids_path": "data", "id_path": "id", "name_path": "id"},
+    "test": {"path": "/v1/models", "method": "GET"},
+}
+
+
 def preset_spec(name: str) -> Dict[str, Any]:
     presets = {
         "openai_images": OPENAI_IMAGES_SPEC,
         "openai_images_edit": OPENAI_IMAGES_EDIT_SPEC,
+        "openai_videos": OPENAI_VIDEOS_SPEC,
     }
     if name not in presets:
         raise _fail(
@@ -1111,15 +1167,22 @@ def classify_status(word: Any, spec: Mapping[str, Any]) -> str:
     return STATE_PROCESSING
 
 
-def _wants_binary(spec: Mapping[str, Any]) -> bool:
-    """Whether the mapping says the provider answers with a file rather than JSON."""
+def _wants_binary(spec: Mapping[str, Any], block: str = "response") -> bool:
+    """Whether the mapping says this call answers with a file rather than JSON.
+
+    A block may override the global `response.type`: a queued provider commonly
+    returns JSON for submit and status and the finished file on its result route.
+    """
+    declared = (spec.get(block) or {}).get("response_type")
+    if declared:
+        return str(declared).strip().lower() == "binary"
     response = spec.get("response") or {}
     return str(response.get("type") or "json").strip().lower() == "binary"
 
 
-def _payload_of(response: Any, spec: Mapping[str, Any]) -> Any:
+def _payload_of(response: Any, spec: Mapping[str, Any], block: str = "response") -> Any:
     """The response body as the mapping describes it: raw bytes, or parsed JSON."""
-    if _wants_binary(spec):
+    if _wants_binary(spec, block):
         return response.body
     return response.json()
 
@@ -1252,13 +1315,17 @@ def _outputs_from(
     context: AdapterContext, payload: Any, spec: Mapping[str, Any], block: str
 ) -> Tuple[ProviderOutput, ...]:
     """Every output the mapping declared in this payload, and nothing else."""
-    if _wants_binary(spec):
+    if _wants_binary(spec, block):
         if not isinstance(payload, (bytes, bytearray)):
             raise ApiError(
                 INVALID_RESPONSE,
                 "The mapping says this provider answers with a file, but the answer was not a file body.",
             )
-        stated = str((spec.get("response") or {}).get("binary_content_type") or "")
+        stated = str(
+            (spec.get(block) or {}).get("binary_content_type")
+            or (spec.get("response") or {}).get("binary_content_type")
+            or ""
+        )
         return (_store_binary(context, bytes(payload), stated),)
     if not isinstance(payload, Mapping):
         raise ApiError(
@@ -1646,7 +1713,7 @@ class DeclarativeHttpAdapter(ModelAdapter):
         )
         try:
             response = self._request(context, result_spec.get("method") or "GET", url)
-            outputs = _outputs_from(context, _payload_of(response, spec), spec, "result")
+            outputs = _outputs_from(context, _payload_of(response, spec, "result"), spec, "result")
         except ApiError as error:
             if error.code in (ENDPOINT_NOT_FOUND, INVALID_RESPONSE):
                 return JobStatus(
@@ -1691,7 +1758,7 @@ class DeclarativeHttpAdapter(ModelAdapter):
                 model=getattr(job, "model_key", ""),
             )
             response = self._request(context, result_spec.get("method") or "GET", url)
-            outputs = _outputs_from(context, _payload_of(response, spec), spec, "result")
+            outputs = _outputs_from(context, _payload_of(response, spec, "result"), spec, "result")
         if not outputs:
             raise ApiError(
                 INVALID_RESPONSE,

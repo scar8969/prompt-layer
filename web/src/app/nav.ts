@@ -28,6 +28,15 @@ export const NAV: NavEntry[] = [
     summary: 'What this studio is, and where to start.',
   },
   {
+    id: 'chat',
+    label: 'Chat',
+    short: 'Chat',
+    path: '/chat',
+    icon: 'send',
+    group: 'create',
+    summary: 'A conversation with the model you registered, on your key.',
+  },
+  {
     id: 'explore',
     label: 'Explore',
     short: 'Explore',
@@ -153,6 +162,15 @@ export const NAV: NavEntry[] = [
     summary: 'Connect a provider with your own key and endpoint.',
   },
   {
+    id: 'onboard',
+    label: 'Add a provider',
+    short: 'Add key',
+    path: '/onboard',
+    icon: 'key',
+    group: 'configure',
+    summary: 'One URL and one key: test every model the endpoint lists, then register what this build can drive.',
+  },
+  {
     id: 'settings',
     label: 'Settings',
     short: 'Settings',
@@ -171,9 +189,9 @@ export const NAV_GROUPS: { id: NavEntry['group']; label: string }[] = [
 
 /** The rail shows the creation surfaces and the four places work lands. */
 export const RAIL: { create: string[]; organise: string[]; configure: string[] } = {
-  create: ['home', 'explore', 'cinema', 'canvas', 'marketing', 'image', 'video', 'prompt'],
+  create: ['home', 'chat', 'explore', 'cinema', 'canvas', 'marketing', 'image', 'video', 'prompt'],
   organise: ['assets', 'presets', 'characters', 'history'],
-  configure: ['models', 'connections', 'settings'],
+  configure: ['models', 'connections', 'onboard', 'settings'],
 };
 
 export function navEntryFor(path: string): NavEntry {

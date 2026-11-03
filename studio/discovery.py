@@ -21,7 +21,7 @@ document the user reads before anything is written.
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 #: The families this build can name.
 CHAT = "chat"
@@ -35,9 +35,10 @@ UNKNOWN = "unknown"
 
 FAMILIES: Tuple[str, ...] = (CHAT, IMAGE, VIDEO, AUDIO, EMBEDDING, RERANK, MODERATION, UNKNOWN)
 
-#: The family this build can drive end to end. Chat is routed through the
-#: conversation service; image is routed through the OpenAI-images adapter.
-DRIVABLE: Tuple[str, ...] = (CHAT, IMAGE)
+#: The families this build can drive end to end. Chat is routed through the
+#: conversation service; image through the OpenAI-images adapter; video through
+#: the OpenAI-videos adapter.
+DRIVABLE: Tuple[str, ...] = (CHAT, IMAGE, VIDEO)
 
 #: The model this workspace wants for conversation when it is present.
 DEFAULT_CHAT_MODEL = "deepseek-v4.1-flash"
@@ -56,6 +57,20 @@ def api_root(base_url: str) -> str:
     if base.endswith("/v1"):
         return base
     return base + "/v1"
+
+
+def host_root(base_url: str) -> str:
+    """The provider URL without its API version segment.
+
+    The fixed OpenAI-images and OpenAI-videos mappings carry `/v1/...` in their
+    paths, so their connection base must be the host root. A user who pastes
+    `https://host/v1` (correct for the model list) would otherwise get
+    `https://host/v1/v1/images/generations` at generation time.
+    """
+    base = str(base_url or "").strip().rstrip("/")
+    if base.endswith("/v1"):
+        return base[: -len("/v1")].rstrip("/")
+    return base
 
 
 #: Ordered patterns. A model is classified by the first family whose pattern
@@ -173,20 +188,28 @@ def proposal(
         seen.add(model_id)
         family = classify(model_id, entry)
         drivable = family in DRIVABLE
+        if family == IMAGE:
+            modality, modes = IMAGE, ["text_to_image", "image_to_image"]
+        elif family == VIDEO:
+            modality, modes = VIDEO, ["text_to_video"]
+        else:
+            modality, modes = "other", []
         item: Dict[str, Any] = {
             "model_key": model_id,
             "display_name": display_name(entry, model_id),
             "family": family,
             "drivable": drivable,
-            "modality": IMAGE if family == IMAGE else "other",
-            "modes": ["text_to_image", "image_to_image"] if family == IMAGE else [],
+            "modality": modality,
+            "modes": modes,
             "reason": "",
         }
         if family == CHAT:
             item["reason"] = "Conversation model; driven through the chat route."
         elif family == IMAGE:
             item["reason"] = "Image model; driven through the OpenAI-images adapter."
-        elif family in (VIDEO, AUDIO):
+        elif family == VIDEO:
+            item["reason"] = "Video model; driven through the OpenAI-videos adapter."
+        elif family == AUDIO:
             item["reason"] = (
                 "Discovered, but this build has no adapter for %s models on a generic "
                 "aggregator. It is listed, not registered as a button that cannot work."
@@ -223,6 +246,6 @@ def proposal(
         else ["The endpoint lists no conversation model."],
         "notes": {
             "classify": "A declared capability wins; otherwise the id is matched against a family table.",
-            "register": "Only chat and image models are registered as drivable. The rest are reported.",
+            "register": "Chat, image and video models are registered as drivable. Audio and the non-generation families are reported.",
         },
     }

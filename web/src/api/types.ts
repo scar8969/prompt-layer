@@ -209,6 +209,98 @@ export interface ConnectionPatchInput {
   auth_header_name?: string | null;
 }
 
+/* --------------------------------------------------- one-key onboarding */
+
+/**
+ * One entry from an aggregator's model list, as the server classified it.
+ *
+ * `drivable` is the honest half: this build can route conversation, images and
+ * video; an audio or embedding model is reported but has no runner here. A probe
+ * is present only for conversation models, and only when the server actually
+ * asked the provider.
+ */
+export interface DiscoveredModel {
+  model_key: string;
+  display_name: string;
+  family: string;
+  drivable: boolean;
+  modality: string;
+  modes: string[];
+  reason: string;
+  available?: boolean;
+  probe?: {
+    ok: boolean;
+    latency_ms: number;
+    status?: number;
+    error?: string;
+  };
+}
+
+export interface DiscoveryPlan {
+  provider: { name: string; base_url: string; model_list_path: string };
+  models: DiscoveredModel[];
+  counts: Record<string, number>;
+  default_chat: string;
+  default_chat_requested: string;
+  probe_summary?: { probed: number; available: number; failed: number; max_probes: number };
+  warnings: string[];
+  notes: Record<string, string>;
+}
+
+export interface OnboardingDiscoverInput {
+  name: string;
+  base_url: string;
+  api_key: string;
+  probe_chat?: boolean;
+  allowed_hosts?: string[];
+}
+
+export interface OnboardingModelChoice {
+  model_key: string;
+  family: string;
+  display_name?: string;
+}
+
+export interface OnboardingRegisterInput {
+  name: string;
+  base_url: string;
+  api_key: string;
+  models: OnboardingModelChoice[];
+  default_chat?: string;
+  allowed_hosts?: string[];
+}
+
+export interface OnboardingRegisterResult {
+  connection: Connection;
+  connections: Connection[];
+  models: Model[];
+  default_chat_model_id: string;
+  default_chat: string;
+  notes: Record<string, string>;
+}
+
+/* ------------------------------------------------------------- conversation */
+
+export interface ChatTurn {
+  role: 'system' | 'user' | 'assistant';
+  content: string;
+}
+
+export interface ChatReply {
+  model_id: string;
+  model_key: string;
+  message: ChatTurn;
+  finish_reason: string;
+  usage: Record<string, unknown>;
+  latency_ms: number;
+  provider: {
+    connection_id: string;
+    connection_name: string;
+    base_url: string;
+    is_mock: boolean;
+  };
+}
+
 /* ----------------------------------------------------------------- models */
 
 export interface ModelInput {

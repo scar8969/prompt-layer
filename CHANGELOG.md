@@ -7,6 +7,52 @@ the change. The repo's two products are siblings: **Prompt Layer**
 
 ## Unreleased
 
+### One key, every model: onboarding, conversation, and video
+
+The BYOK promise was "connect your own key", but the wizard still asked the user
+to know which provider protocol each model speaks. Now one URL and one key are
+enough: the backend reads the endpoint's own model list, classifies every entry,
+tests the conversation models, and registers what this build can actually drive.
+
+- **Discovery is a document, not a guess.** `POST /api/onboarding/discover` reads
+  `/v1/models` (falling back to `/models`), prefers a capability the provider
+  declares over its name, and probes up to 24 conversation models with one
+  one-token turn each. `available` means the provider answered. It writes
+  nothing, so nothing is spent before the user confirms. Image and video models
+  are not probed: one image call can cost more than every chat probe combined.
+- **Registration stores one connection per protocol.** Conversation is
+  `declarative_http` (or rides on a media connection, because the chat route
+  reads the base URL and key itself), images are `openai_images`, and video is a
+  declarative connection carrying the OpenAI-videos mapping. A family with no
+  adapter -- audio, embedding, rerank, moderation -- is reported with its reason
+  and refused by name, not registered as a button that cannot work.
+- **Video became real data.** The declarative engine can now declare a per-call
+  response type, because the OpenAI-videos shape answers submit and status in
+  JSON and returns the finished clip as bytes from its content route. The
+  `OPENAI_VIDEOS_SPEC` preset describes the routes, polls the job and stores the
+  clip as an ordinary asset. Only text to video is claimed; the multipart
+  reference-image upload is not expressed. No live credential for such an
+  endpoint was available while this was written, so no real clip was produced
+  here; that is stated in `docs/LIMITATIONS.md` and `docs/FEATURES.md`.
+- **Conversation on your own key.** `GET /api/chat/models` lists the models
+  registered as conversation models and `POST /api/chat` sends one bounded turn
+  through the connection's own base URL and key. When the endpoint lists
+  `deepseek-v4.1-flash`, it is the workspace default; otherwise the first chat
+  model is, and the response says the requested one was absent. The provider's
+  usage, latency and error pass through unrewritten.
+- **Two screens.** `/onboard` is the test-then-register flow, with a per-model
+  verdict, checkboxes only for drivable families, and an explicit "this step
+  spends nothing" line. `/chat` is the conversation itself: model picker, turn
+  log, usage and latency, and a provider error shown as a failure rather than a
+  plausible-sounding answer. Connections now links to both.
+
+Two defects the tests found on the way: the name table tested embedding before
+rerank, so `bge-reranker-v2` was reported as an embedding model; and
+`check_base_url` returned the synthesised root slash, so a stored base URL no
+longer equalled the one the user typed.
+
+819 tests pass.
+
 ### Factories and conflict-safe canvases
 
 The two surfaces left partial after the last pass are finished, and both stay on
