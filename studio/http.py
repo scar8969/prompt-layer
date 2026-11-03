@@ -52,6 +52,19 @@ MAX_URL_LENGTH = 8 * 1024
 
 _SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 
+#: The path the built client is mounted under on the deployment, and therefore
+#: the prefix it puts in front of every API call. The serverless function strips
+#: it (studio/serverless.py); the local server does the same here so the one
+#: committed bundle works in both places.
+MOUNT_PREFIX = "/api/studio"
+
+
+def _strip_mount_prefix(request: RequestContext) -> None:
+    """Route `/api/studio/api/...` as `/api/...` on the local server too."""
+    path = request.path or ""
+    if path == MOUNT_PREFIX or path.startswith(MOUNT_PREFIX + "/"):
+        request.path = path[len(MOUNT_PREFIX):] or "/"
+
 #: The routes that create a session rather than act inside one. A stale session
 #: cookie must not be able to lock a user out of the request that replaces it.
 _AUTH_ENTRY_PATHS = frozenset(
@@ -464,6 +477,7 @@ class HttpApp:
 
     def _dispatch(self, request: RequestContext) -> Response:
         """Origin check, rate limit, authentication, then the handler."""
+        _strip_mount_prefix(request)
         self._check_origin(request)
         self._rate_limit(request)
         route, params = self.router.resolve(request.method, request.path)

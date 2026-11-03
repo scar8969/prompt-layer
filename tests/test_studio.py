@@ -275,6 +275,13 @@ def test_a_live_session_still_needs_its_csrf_token(client):
     assert body["error"]["code"] == "forbidden"
 
 
+def test_the_deployment_mount_prefix_is_routed_locally(client):
+    """The committed client is built for /api/studio; local must accept it too."""
+    status, body = client.call("GET", "/api/studio/api/system/status")
+    assert status == 200, body
+    assert body["status"]["database_backend"] == "sqlite"
+
+
 def test_state_changing_request_needs_a_csrf_token(client):
     client.register()
     client.csrf = ""

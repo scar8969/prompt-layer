@@ -7,6 +7,20 @@ the change. The repo's two products are siblings: **Prompt Layer**
 
 ## Unreleased
 
+### The deployed client calls the mount it is actually served from
+
+`web/dist` had been rebuilt without `VITE_STUDIO_API_PREFIX`, so every request
+from the committed bundle went to `/api/...` — paths Vercel routes to the Prompt
+Layer functions, or to nothing at all. Registration on the deployment answered
+Vercel's own 404 page.
+
+The bundle is rebuilt with `/api/studio`; `scripts/build_client.py` verifies the
+prefix is present and that every path the client calls has a backend route. The
+local server now strips the same prefix, so one committed bundle works both
+served locally and mounted on the platform.
+
+822 tests pass.
+
 ### Sign-in recovers from a stale session cookie
 
 A session cookie can outlive the token that matches it: a rotated auth secret, a
