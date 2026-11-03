@@ -52,6 +52,17 @@ MAX_URL_LENGTH = 8 * 1024
 
 _SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 
+#: The routes that create a session rather than act inside one. A stale session
+#: cookie must not be able to lock a user out of the request that replaces it.
+_AUTH_ENTRY_PATHS = frozenset(
+    {
+        "/api/auth/login",
+        "/api/auth/register",
+        "/api/auth/forgot-password",
+        "/api/auth/reset-password",
+    }
+)
+
 
 @dataclass
 class Response:
@@ -492,6 +503,14 @@ class HttpApp:
         # is no victim session to ride. Sign-in and registration therefore rely
         # on the origin check above, and the CSRF header is required only once a
         # session cookie is actually present.
+        #
+        # The sign-in entry points skip the header entirely. A session cookie can
+        # outlive the token that matches it -- a rotated auth secret, a cleared
+        # non-HttpOnly cookie, a cookie left by an older install -- and requiring
+        # a token the client cannot recover would answer 403 to the one request
+        # that could replace it. The origin check still applies to them.
+        if request.path.rstrip("/") in _AUTH_ENTRY_PATHS:
+            return
         has_session = bool(request.cookie(SESSION_COOKIE))
         supplied = request.csrf_header
         if not supplied:

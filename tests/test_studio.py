@@ -249,6 +249,32 @@ def test_wrong_password_is_indistinguishable_from_unknown_account(client):
     assert wrong["error"]["code"] == missing["error"]["code"]
 
 
+def test_a_stale_session_cookie_cannot_block_signing_in(client):
+    """The request that replaces a dead session must not need that session."""
+    status, created = client.register()
+    email = created["user"]["email"]
+    # The cookie survives; the token that matched it does not. This is the state
+    # after an auth-secret rotation or a partially cleared cookie jar, and it
+    # used to answer 403 to sign-in itself.
+    client.csrf = ""
+    client.cookies = {"studio_session": "stale-token-from-an-older-secret"}
+    status, body = client.call(
+        "POST", "/api/auth/login", {"email": email, "password": PASSWORD}
+    )
+    assert status == 200, body
+    assert "studio_session" in client.cookies
+    assert "studio_csrf" in client.cookies
+
+
+def test_a_live_session_still_needs_its_csrf_token(client):
+    """The exemption is for the entry points, not for an authenticated action."""
+    client.register()
+    client.csrf = ""
+    status, body = client.call("POST", "/api/auth/logout", {})
+    assert status == 403
+    assert body["error"]["code"] == "forbidden"
+
+
 def test_state_changing_request_needs_a_csrf_token(client):
     client.register()
     client.csrf = ""

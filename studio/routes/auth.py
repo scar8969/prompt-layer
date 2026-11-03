@@ -135,7 +135,10 @@ def register_routes(router: Any, app: Any) -> None:
             app.sessions.revoke(token)
         secure = bool(app.config.security.require_https)
         response = Response.json({"ok": True})
-        response.headers["Set-Cookie"] = clear_cookie(SESSION_COOKIE, secure=secure)
+        response.headers["Set-Cookie"] = [
+            clear_cookie(SESSION_COOKIE, secure=secure),
+            clear_cookie(CSRF_COOKIE, secure=secure),
+        ]
         return response
 
     def me(request: RequestContext) -> Response:

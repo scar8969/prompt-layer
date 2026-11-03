@@ -7,6 +7,21 @@ the change. The repo's two products are siblings: **Prompt Layer**
 
 ## Unreleased
 
+### Sign-in recovers from a stale session cookie
+
+A session cookie can outlive the token that matches it: a rotated auth secret, a
+partially cleared cookie jar, or a cookie left by an older install. The CSRF gate
+keyed on the cookie being *present*, so the one request that could replace it --
+`/api/auth/login` -- was answered `403` and the browser could not sign in again
+without clearing cookies by hand.
+
+The sign-in entry points (login, register, forgot-password, reset-password) now
+rely on the origin check alone, because they create a session rather than act
+inside one. Authenticated actions still require `X-CSRF-Token`, and two tests
+pin both sides. Logout also clears the CSRF cookie instead of leaving it behind.
+
+821 tests pass; `scripts/sanity.py` passes 97/97.
+
 ### One key, every model: onboarding, conversation, and video
 
 The BYOK promise was "connect your own key", but the wizard still asked the user
