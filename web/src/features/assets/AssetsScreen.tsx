@@ -22,8 +22,8 @@ const KINDS = [
   { value: '', label: 'Every kind' },
   { value: 'image', label: 'Images' },
   { value: 'video', label: 'Video' },
-  { value: 'upload', label: 'Uploads' },
-  { value: 'mask', label: 'Masks' },
+  { value: 'audio', label: 'Audio' },
+  { value: 'other', label: 'Other' },
 ];
 
 /** The asset library: everything the backend can serve, and nothing it cannot. */
@@ -165,7 +165,7 @@ export function AssetsScreen() {
       <Section title="Upload">
         <Dropzone
           onFiles={(files) => void upload(files)}
-          accept="image/*,video/*"
+          accept="image/*,video/*,audio/*"
           hint="Files are sent to the backend as base64 and stored server-side. The client keeps no copy."
           disabled={uploading}
           disabledReason={uploading ? 'An upload is already in progress.' : null}
@@ -206,6 +206,11 @@ export function AssetsScreen() {
                     asset.content_url ? (
                       <video src={asset.content_url} preload="metadata" muted />
                     ) : null
+                  ) : asset.kind === 'audio' ? (
+                    <span className="media__placeholder" aria-hidden="true">
+                      <Icon name="play" size={16} />
+                      <span style={{ fontSize: 11 }}>audio</span>
+                    </span>
                   ) : (
                     <AssetImage src={asset.thumbnail_url ?? asset.content_url} alt={asset.name} />
                   )}
@@ -334,6 +339,15 @@ function AssetSheet({
             {asset.kind === 'video' ? (
               asset.content_url ? (
                 <video src={asset.content_url} controls preload="metadata" />
+              ) : (
+                <div className="media__placeholder">The backend returned no URL for this asset.</div>
+              )
+            ) : asset.kind === 'audio' ? (
+              asset.content_url ? (
+                <div className="media__placeholder" style={{ width: '100%', alignItems: 'stretch' }}>
+                  <Icon name="play" size={16} />
+                  <audio src={asset.content_url} controls preload="metadata" style={{ width: '100%', marginTop: 6 }} />
+                </div>
               ) : (
                 <div className="media__placeholder">The backend returned no URL for this asset.</div>
               )

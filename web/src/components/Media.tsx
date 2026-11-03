@@ -5,7 +5,7 @@ import { MockBadge } from './Badge.tsx';
 import { Icon } from './Icon.tsx';
 
 /**
- * Every image and video in this studio is loaded from a URL the backend
+ * Every image, video and track in this studio is loaded from a URL the backend
  * returned. There is no generated placeholder artwork anywhere: an output with
  * no URL renders an explicit "not delivered" card instead of a picture.
  */
@@ -48,7 +48,7 @@ export function AssetImage({
 
 export interface MediaItem {
   id: string;
-  kind: 'image' | 'video';
+  kind: 'image' | 'video' | 'audio';
   url: string | null;
   thumbnailUrl?: string | null;
   isMock: boolean;
@@ -58,8 +58,16 @@ export interface MediaItem {
   output?: Output;
 }
 
+/** A track is a first-class output, not an image with a broken tag. */
+function kindOf(contentType: string, fallback: 'image' | 'video' | 'audio' = 'image') {
+  if (contentType.startsWith('audio/')) return 'audio' as const;
+  if (contentType.startsWith('video/')) return 'video' as const;
+  if (contentType.startsWith('image/')) return 'image' as const;
+  return fallback;
+}
+
 export function outputToMedia(output: Output, index: number): MediaItem {
-  const kind = looksLikeVideo(output.content_type ?? '') ? 'video' : 'image';
+  const kind = kindOf(output.content_type ?? '', looksLikeVideo(output.content_type ?? '') ? 'video' : 'image');
   const dimensions = output.width && output.height ? `${output.width}×${output.height}` : null;
   return {
     id: output.id || `output-${index}`,
@@ -75,7 +83,8 @@ export function outputToMedia(output: Output, index: number): MediaItem {
 }
 
 export function assetToMedia(asset: Asset): MediaItem {
-  const kind = asset.kind === 'video' ? 'video' : 'image';
+  const kind =
+    asset.kind === 'video' ? 'video' : asset.kind === 'audio' ? 'audio' : 'image';
   return {
     id: asset.id,
     kind,
@@ -186,6 +195,12 @@ export function MediaCanvas({
             </div>
           ) : item.kind === 'video' ? (
             <video className="canvas__image" src={item.url} controls preload="metadata" />
+          ) : item.kind === 'audio' ? (
+            <div className="media__placeholder" style={{ alignItems: 'stretch', width: 'min(420px, 80vw)' }}>
+              <Icon name="play" size={18} />
+              <p style={{ margin: '6px 0 0' }}>{item.label}</p>
+              <audio src={item.url} controls preload="metadata" style={{ width: '100%', marginTop: 8 }} />
+            </div>
           ) : (
             <AssetImage src={item.url} alt={item.label} className="canvas__image" />
           )}
@@ -236,6 +251,11 @@ export function MediaGrid({
               <div className="media__placeholder">No URL returned for this output.</div>
             ) : item.kind === 'video' ? (
               <video src={item.url} controls preload="metadata" />
+            ) : item.kind === 'audio' ? (
+              <div className="media__placeholder" style={{ width: '100%' }}>
+                <Icon name="play" size={16} />
+                <audio src={item.url} controls preload="metadata" style={{ width: '100%', marginTop: 6 }} />
+              </div>
             ) : (
               <AssetImage src={item.thumbnailUrl ?? item.url} alt={item.label} />
             )}
