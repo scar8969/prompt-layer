@@ -1654,6 +1654,8 @@ function readCanvas(raw: unknown): Canvas {
     description: str(r.description) ?? '',
     nodes: arr(r.nodes).map(readCanvasNode),
     edges: arr(r.edges).map(readCanvasEdge),
+    revision: num(r.revision) ?? 1,
+    updated_by_user_id: str(r.updated_by_user_id),
     created_at: str(r.created_at) ?? '',
     updated_at: str(r.updated_at) ?? '',
     summary: isRecord(r.summary) ? readCanvasSummary(r.summary) : undefined,
@@ -1706,10 +1708,14 @@ export const canvases = {  async list(signal?: AbortSignal): Promise<Canvas[]> {
   async patch(
     id: string,
     input: Partial<Pick<Canvas, 'name' | 'description' | 'nodes' | 'edges'>>,
+    expectedRevision?: number,
   ): Promise<Canvas> {
     const payload = await apiRequest<unknown>(`/api/canvases/${encodeURIComponent(id)}`, {
       method: 'PATCH',
-      body: input,
+      body: {
+        ...input,
+        ...(expectedRevision === undefined ? {} : { expected_revision: expectedRevision }),
+      },
     });
     return readCanvas(envelope(payload, 'canvas'));
   },
@@ -1734,6 +1740,92 @@ export const canvases = {  async list(signal?: AbortSignal): Promise<Canvas[]> {
       signal,
     });
     return arr(envelope(payload, 'runs')).map(readCanvasRun);
+  },
+};
+
+/* --------------------------------------------------------------- factories */
+
+export interface FactoryPlan {
+  kind: string;
+  label: string;
+  model_id: string;
+  product: string;
+  audience: string;
+  benefit: string;
+  nodes: CanvasNode[];
+  edges: CanvasEdge[];
+  summary: CanvasSummary;
+  notes: Record<string, string>;
+}
+
+export interface FactoryKind {
+  kind: string;
+  label: string;
+  summary: string;
+  node_count: number;
+}
+
+function readFactoryPlan(raw: unknown): FactoryPlan {
+  const r = isRecord(raw) ? raw : {};
+  return {
+    kind: str(r.kind) ?? '',
+    label: str(r.label) ?? '',
+    model_id: str(r.model_id) ?? '',
+    product: str(r.product) ?? '',
+    audience: str(r.audience) ?? '',
+    benefit: str(r.benefit) ?? '',
+    nodes: arr(r.nodes).map(readCanvasNode),
+    edges: arr(r.edges).map(readCanvasEdge),
+    summary: readCanvasSummary(r.summary),
+    notes: isRecord(r.notes) ? (r.notes as Record<string, string>) : {},
+  };
+}
+
+export const factories = {
+  async list(signal?: AbortSignal): Promise<FactoryKind[]> {
+    const payload = await apiRequest<unknown>('/api/factories', { signal });
+    return arr(envelope(payload, 'factories')).map((item) => {
+      const f = isRecord(item) ? item : {};
+      return {
+        kind: str(f.kind) ?? '',
+        label: str(f.label) ?? '',
+        summary: str(f.summary) ?? '',
+        node_count: num(f.node_count) ?? 0,
+      };
+    });
+  },
+  async plan(input: {
+    kind: string;
+    model_id: string;
+    product: string;
+    benefit?: string;
+    audience?: string;
+    subject?: string;
+    body?: string;
+    lens?: string;
+    lighting?: string;
+    palette?: string;
+    styles?: string[];
+  }): Promise<FactoryPlan> {
+    const payload = await apiRequest<unknown>('/api/factories/plan', { method: 'POST', body: input });
+    return readFactoryPlan(isRecord(payload) ? payload.plan : null);
+  },
+  async createCanvas(input: {
+    kind: string;
+    model_id: string;
+    product: string;
+    benefit?: string;
+    audience?: string;
+    subject?: string;
+    name?: string;
+    styles?: string[];
+  }): Promise<{ canvas: Canvas; plan: FactoryPlan }> {
+    const payload = await apiRequest<unknown>('/api/factories/canvases', { method: 'POST', body: input });
+    const record = isRecord(payload) ? payload : {};
+    return {
+      canvas: readCanvas(record.canvas),
+      plan: readFactoryPlan(record.plan),
+    };
   },
 };
 

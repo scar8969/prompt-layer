@@ -60,10 +60,21 @@ def register_routes(router: Any, app: Any) -> None:
         )
 
     def update(request: RequestContext) -> Response:
-        """Edit a canvas. The whole graph is re-validated, never patched blind."""
+        """Edit a canvas. The whole graph is re-validated, never patched blind.
+
+        A caller that sends ``expected_revision`` gets optimistic concurrency: a
+        canvas that moved underneath it is a 409 naming the current revision, not
+        a silent overwrite of somebody else's work.
+        """
         request.session.require("project:manage")
+        body = dict(request.json())
+        expected = body.pop("expected_revision", None)
         app.repos.canvases.update(
-            request.session.workspace_id, request.params["id"], request.json()
+            request.session.workspace_id,
+            request.params["id"],
+            body,
+            user_id=request.session.user_id,
+            expected_revision=expected,
         )
         return Response.json(
             {"canvas": _canvas(app, request.session.workspace_id, request.params["id"])}

@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { canvases as canvasesApi, models as modelsApi } from '../../api/endpoints.ts';
 import type { Canvas, CanvasEdge, CanvasNode, CanvasRun, Model } from '../../api/types.ts';
+import { ApiError } from '../../api/client.ts';
+import { useRouter } from '../../app/router.tsx';
 import { Button } from '../../components/Button.tsx';
 import { Dialog } from '../../components/Dialog.tsx';
-import { TextArea, TextInput } from '../../components/Field.tsx';import { Icon } from '../../components/Icon.tsx';
+import { TextArea, TextInput } from '../../components/Field.tsx';
+import { Icon } from '../../components/Icon.tsx';
 import { Badge } from '../../components/Badge.tsx';
 import { useQuery, invalidate } from '../../state/query.ts';
 import { useToasts } from '../../state/toasts.tsx';
@@ -37,9 +40,12 @@ function newNode(kind: CanvasNode['kind'], index: number, modelId = ''): CanvasN
 
 export function CanvasScreen() {
   const toasts = useToasts();
+  const { route } = useRouter();
   const [selectedId, setSelectedId] = useState('');
   const [draft, setDraft] = useState<Canvas | null>(null);
   const [saving, setSaving] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const [conflict, setConflict] = useState<null | { revision: number; updatedBy: string }>(null);
   const [connecting, setConnecting] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState('');
   const [run, setRun] = useState<CanvasRun | null>(null);
@@ -60,12 +66,30 @@ export function CanvasScreen() {
       return;
     }
     const found = (list.data ?? []).find((item) => item.id === selectedId);
-    if (found) setDraft(structuredClone(found));
+    if (found) {
+      setDraft(structuredClone(found));
+      setDirty(false);
+      setConflict(null);
+    }
   }, [selectedId, list.data]);
 
-  const update = (patch: Partial<Canvas>) => setDraft((current) => (current ? { ...current, ...patch } : current));
+  // `/canvas?canvas=<id>` is how the factory screen hands over a plan it just
+  // saved. It is consumed once; a later navigation clears it.
+  useEffect(() => {
+    const requested = route.params.get('canvas');
+    if (requested && requested !== selectedId) {
+      setSelectedId(requested);
+      setRun(null);
+    }
+  }, [route.params, selectedId]);
+
+  const update = (patch: Partial<Canvas>) => {
+    setDirty(true);
+    setDraft((current) => (current ? { ...current, ...patch } : current));
+  };
 
   const addNode = (kind: CanvasNode['kind']) => {
+    setDirty(true);
     setDraft((current) => {
       const base = current ?? {
         id: '',
@@ -85,6 +109,7 @@ export function CanvasScreen() {
   };
 
   const removeNode = (nodeId: string) => {
+    setDirty(true);
     setDraft((current) =>
       current
         ? {
@@ -98,6 +123,7 @@ export function CanvasScreen() {
   };
 
   const patchNode = (nodeId: string, fields: Partial<CanvasNode>) => {
+    setDirty(true);
     setDraft((current) =>
       current
         ? { ...current, nodes: current.nodes.map((node) => (node.id === nodeId ? { ...node, ...fields } : node)) }
@@ -117,12 +143,14 @@ export function CanvasScreen() {
         return current;
       }
       const edge: CanvasEdge = { from: connecting, to: target, role: 'input' };
+      setDirty(true);
       return { ...current, edges: [...current.edges, edge] };
     });
     setConnecting(null);
   };
 
   const removeEdge = (index: number) => {
+    setDirty(true);
     setDraft((current) =>
       current ? { ...current, edges: current.edges.filter((_, position) => position !== index) } : current,
     );
@@ -155,14 +183,19 @@ export function CanvasScreen() {
   const save = async (): Promise<Canvas | null> => {
     if (!draft) return null;
     setSaving(true);
+    setConflict(null);
     try {
       const saved = draft.id
-        ? await canvasesApi.patch(draft.id, {
-            name: draft.name,
-            description: draft.description,
-            nodes: draft.nodes,
-            edges: draft.edges,
-          })
+        ? await canvasesApi.patch(
+            draft.id,
+            {
+              name: draft.name,
+              description: draft.description,
+              nodes: draft.nodes,
+              edges: draft.edges,
+            },
+            draft.revision ?? 1,
+          )
         : await canvasesApi.create({
             name: draft.name || 'Untitled canvas',
             description: draft.description,
@@ -173,23 +206,77 @@ export function CanvasScreen() {
       list.reload();
       setSelectedId(saved.id);
       setDraft(saved);
+      setDirty(false);
       toasts.push({ tone: 'success', title: 'Canvas saved', text: `${saved.nodes.length} node(s).` });
       return saved;
     } catch (error) {
-      toasts.push({
-        tone: 'error',
-        title: 'The canvas was refused',
-        text: error instanceof Error ? error.message : 'The graph could not be saved.',
-      });
+      if (error instanceof ApiError && error.code === 'conflict') {
+        // Somebody else wrote first. Their revision is the truth; keep the local
+        // edits on screen and say plainly that saving them needs a reload, so
+        // nothing is lost and nothing is silently overwritten.
+        const details = (error.details ?? {}) as { current_revision?: number; updated_by_user_id?: string };
+        setConflict({
+          revision: Number(details.current_revision ?? 0),
+          updatedBy: String(details.updated_by_user_id ?? ''),
+        });
+      } else {
+        toasts.push({
+          tone: 'error',
+          title: 'The canvas was refused',
+          text: error instanceof Error ? error.message : 'The graph could not be saved.',
+        });
+      }
       return null;
     } finally {
       setSaving(false);
     }
   };
 
+  const reload = async () => {
+    if (!draft?.id) return;
+    try {
+      const fresh = await canvasesApi.get(draft.id);
+      setDraft(fresh);
+      setDirty(false);
+      setConflict(null);
+      invalidate('canvases');
+      toasts.push({ tone: 'info', title: 'Reloaded', text: 'The canvas now shows the newest saved graph.' });
+    } catch (error) {
+      toasts.push({
+        tone: 'error',
+        title: 'Could not reload',
+        text: error instanceof Error ? error.message : 'The canvas could not be read.',
+      });
+    }
+  };
+
+  // Collaboration without a socket: while this editor has no unsaved change, it
+  // polls the canvas and adopts a newer revision. With unsaved work it does
+  // nothing, so a remote save never lands on top of somebody's half-finished
+  // drag. This is conflict-safe editing, not a live-cursor protocol, and the
+  // interface says so.
+  useEffect(() => {
+    if (!draft?.id || dirty || saving) return;
+    const id = draft.id;
+    const timer = window.setInterval(async () => {
+      try {
+        const fresh = await canvasesApi.get(id);
+        if ((fresh.revision ?? 1) !== (draft.revision ?? 1)) {
+          setDraft(fresh);
+        }
+      } catch {
+        /* the next poll will report the real failure */
+      }
+    }, 4000);
+    return () => window.clearInterval(timer);
+  }, [draft?.id, draft?.revision, dirty, saving]);
+
   const runCanvas = async () => {
     if (!draft) return;
-    const saved = draft.id && draft.nodes.length ? draft : await save();
+    // A run executes the graph that is saved. If there are unsaved edits, save
+    // first — otherwise the run would quietly use an older document than the one
+    // on screen, which is the exact confusion this screen exists to avoid.
+    const saved = draft.id && !dirty && draft.nodes.length ? draft : await save();
     if (!saved) return;
     try {
       const started = await canvasesApi.startRun(saved.id);
@@ -332,6 +419,9 @@ export function CanvasScreen() {
                       : 'nothing to run yet'}
                   </p>
                   <span className="topbar__spacer" />
+                  <Badge tone={dirty ? 'warn' : 'plain'}>
+                    {dirty ? 'unsaved edits' : `revision ${draft.revision ?? 1}`}
+                  </Badge>
                   {connecting ? (
                     <Badge tone="accent">
                       Connecting from {nodeById(connecting)?.label || connecting} — click the target
@@ -339,6 +429,22 @@ export function CanvasScreen() {
                   ) : null}
                   {run ? <Badge tone={run.status === 'failed' ? 'danger' : run.status === 'completed' ? 'ok' : 'accent'}>{run.status}</Badge> : null}
                 </div>
+
+                {conflict ? (
+                  <div className="panel panel--warn" style={{ marginTop: 10 }}>
+                    <p className="panel__title" style={{ marginBottom: 6 }}>
+                      <Icon name="alert" size={13} /> This canvas changed while you were editing
+                    </p>
+                    <p style={{ margin: '0 0 8px' }}>
+                      Somebody saved revision {conflict.revision || '?'} after you opened it. Your edits are
+                      still here. Reload to see their version, then reapply yours; saving now would overwrite
+                      their work.
+                    </p>
+                    <Button size="sm" onClick={() => void reload()}>
+                      Reload the saved canvas
+                    </Button>
+                  </div>
+                ) : null}
               </div>
 
               <div

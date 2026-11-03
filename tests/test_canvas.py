@@ -479,3 +479,54 @@ def test_editing_a_canvas_revalidates_the_graph(client):
     )
     assert status == 400, refused
     assert "loop" in refused["error"]["message"]
+
+
+def test_a_save_carries_a_revision_and_a_stale_save_is_a_conflict(client):
+    """Two editors: the second save must not silently erase the first."""
+    model = client.model("image")
+    status, body = client.call(
+        "POST",
+        "/api/canvases",
+        {"name": "Shared", "nodes": [_node("a", model_id=model["id"])], "edges": []},
+    )
+    assert status == 201, body
+    opened = body["canvas"]
+    assert opened["revision"] == 1
+
+    status, first = client.call(
+        "PATCH",
+        "/api/canvases/%s" % opened["id"],
+        {"name": "Shared, renamed", "expected_revision": 1},
+    )
+    assert status == 200, first
+    assert first["canvas"]["revision"] == 2
+
+    # The second editor still holds revision 1. Their save is refused with the
+    # revision that is actually there, so they can reload instead of clobbering.
+    status, conflict = client.call(
+        "PATCH",
+        "/api/canvases/%s" % opened["id"],
+        {"name": "Shared, overwritten", "expected_revision": 1},
+    )
+    assert status == 409, conflict
+    assert conflict["error"]["code"] == "conflict"
+    assert conflict["error"]["details"]["current_revision"] == 2
+
+    status, current = client.call("GET", "/api/canvases/%s" % opened["id"])
+    assert current["canvas"]["name"] == "Shared, renamed"
+    assert current["canvas"]["revision"] == 2
+
+
+def test_an_edit_without_a_revision_still_works(client):
+    """A script that owns the document is not required to hold a revision."""
+    model = client.model("image")
+    status, body = client.call(
+        "POST",
+        "/api/canvases",
+        {"name": "Scripted", "nodes": [_node("a", model_id=model["id"])], "edges": []},
+    )
+    canvas_id = body["canvas"]["id"]
+    status, updated = client.call("PATCH", "/api/canvases/%s" % canvas_id, {"name": "Scripted, again"})
+    assert status == 200, updated
+    assert updated["canvas"]["revision"] == 2
+

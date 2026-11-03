@@ -671,6 +671,9 @@ export interface Canvas {
   description: string;
   nodes: CanvasNode[];
   edges: CanvasEdge[];
+  /** Monotonic revision. A save that carries the revision it read cannot clobber a newer one. */
+  revision?: number;
+  updated_by_user_id?: string | null;
   created_at: string;
   updated_at: string;
   summary?: CanvasSummary;

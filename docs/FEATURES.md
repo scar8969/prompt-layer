@@ -60,8 +60,8 @@ to claim:
 | Cinema multi-shot scene | **Wired to your key** | `multi_shot` and `scene_continuation` modes. |
 | Projects, assets, history, cost records | **Built** | Plus per-request usage rows that record what the provider charged, when it said. |
 | Trending / community feed | **Not built** | Needs other people's generations; there is no public feed here. |
-| Canvas: node pipelines, realtime collaboration | **Partial** | `/canvas` saves a validated DAG of generate and note nodes, runs it node by node, and refuses a cycle by naming the nodes on it. Each node is one ordinary generation job, and a node is queued only after its upstream has a stored output. Realtime multi-user collaboration is not built. |
-| Marketing Studio, UGC factory, Fashion factory | **Partial** | `/marketing` reads a product page's own metadata, composes a brief deterministically (no model writes the copy), and queues one real render per format. The UGC and fashion campaign factories — scripted multi-scene shoots — are not built. |
+| Canvas: node pipelines, realtime collaboration | **Partial** | `/canvas` saves a validated DAG of generate and note nodes, runs it node by node, and refuses a cycle by naming the nodes on it. Each node is one ordinary generation job, and a node is queued only after its upstream has a stored output. Collaboration is conflict-safe rather than live: every save carries the revision it read, a stale save is a 409 naming the current revision, and an idle editor adopts newer revisions by polling. Live cursors and presence are not built. |
+| Marketing Studio, UGC factory, Fashion factory | **Built** | `/marketing` reads a product page's own metadata, composes a brief deterministically (no model writes the copy), and queues one real render per format. The factories (`/api/factories`) plan a UGC shoot, a fashion lookbook or a photodump into a canvas of shots; planning and saving are free, and only running the canvas queues jobs. |
 | Credits and plans | **Not built, on purpose** | You spend your own provider account. The platform's billing mode is `byok` and it says so. |
 | MCP access to the preset catalogue | **Built** | `studio/mcp.py` plus `scripts/preset_mcp.py` expose five read-only tools over stdio: list/get presets, compile a brief, list camera moves, read prompt layers. No tool can spend, and the dispatcher holds no credential. |
 
@@ -84,9 +84,10 @@ item is deliberately not attempted.
 3. **Audio — routed to your key.** Voiceover, dub and lip sync exist as derived
    jobs with their own requirements. No audio model is hosted, so a workspace with
    no audio-capable provider sees a disabled control and the reason.
-4. **A canvas — built for a DAG.** Nodes and edges, a topological order, upstream
-   outputs feeding downstream requests. Collaboration and node-level branching on
-   a condition are not built.
+4. **A canvas — built for a DAG, with conflict-safe editing.** Nodes and edges, a
+   topological order, upstream outputs feeding downstream requests, and a revision
+   on every save so two editors cannot silently overwrite each other. Live cursors
+   and presence are not built.
 5. **Anything that needs our own weights** — Soul, Soul ID's training, DoP's VFX:
    a fine-tuning pipeline and a GPU budget, which is exactly what a BYO-key platform
    is designed to avoid. Still not attempted, still on purpose.

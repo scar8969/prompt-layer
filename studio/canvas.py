@@ -284,7 +284,10 @@ def topological_order(
 
     def key(node_id: str) -> Tuple[float, float, str]:
         point = position.get(node_id) or {}
-        return (float(point.get("x") or 0.0), float(point.get("y") or 0.0), node_id)
+        # Reading order: the top row first, left to right, then the next row. The
+        # previous sort was x-first, which interleaved rows on a grid; a graph is
+        # read like a page, not like a spreadsheet column.
+        return (float(point.get("y") or 0.0), float(point.get("x") or 0.0), node_id)
 
     ready = sorted([node_id for node_id, count in incoming.items() if count == 0], key=key)
     order: List[str] = []

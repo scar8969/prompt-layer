@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react';
-import { marketing as marketingApi, models as modelsApi } from '../../api/endpoints.ts';
+import { factories as factoriesApi, marketing as marketingApi, models as modelsApi } from '../../api/endpoints.ts';
 import type { MarketingBrief, MarketingCampaign, Model } from '../../api/types.ts';
 import { Badge } from '../../components/Badge.tsx';
 import { Button } from '../../components/Button.tsx';
 import { TextArea, TextInput, Select } from '../../components/Field.tsx';
 import { Icon } from '../../components/Icon.tsx';
-import { Link } from '../../app/router.tsx';
+import { Link, useRouter } from '../../app/router.tsx';
 import { useQuery } from '../../state/query.ts';
 import { useToasts } from '../../state/toasts.tsx';
 
@@ -19,6 +19,7 @@ import { useToasts } from '../../state/toasts.tsx';
  */
 export function MarketingScreen() {
   const toasts = useToasts();
+  const { navigate } = useRouter();
   const [url, setUrl] = useState('');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -30,9 +31,11 @@ export function MarketingScreen() {
   const [brief, setBrief] = useState<MarketingBrief | null>(null);
   const [campaign, setCampaign] = useState<MarketingCampaign | null>(null);
   const [busy, setBusy] = useState(false);
+  const [factoryBusy, setFactoryBusy] = useState('');
   const [error, setError] = useState<unknown>(null);
 
   const meta = useQuery('marketing:formats', () => marketingApi.formats(), { staleMs: 300_000 });
+  const factoryKinds = useQuery('marketing:factories', () => factoriesApi.list(), { staleMs: 300_000 });
   const models = useQuery<Model[]>('models?modality=image&enabled=1&marketing', () => modelsApi.list({ modality: 'image', enabled: true }), {
     staleMs: 30_000,
   });
@@ -86,6 +89,38 @@ export function MarketingScreen() {
       setError(err);
     } finally {
       setBusy(false);
+    }
+  };
+
+  /**
+   * Turn the brief into a multi-shot canvas.
+   *
+   * This is the UGC / fashion / photodump factory: it saves a planned graph and
+   * opens it on the canvas screen. Nothing is generated here — the run is a
+   * separate, deliberate press.
+   */
+  const makeShoot = async (kind: string) => {
+    if (!brief || !modelId) return;
+    setFactoryBusy(kind);
+    setError(null);
+    try {
+      const result = await factoriesApi.createCanvas({
+        kind,
+        model_id: modelId,
+        product: brief.product,
+        benefit: brief.benefit || undefined,
+        audience: brief.audience || undefined,
+      });
+      toasts.push({
+        tone: 'success',
+        title: 'Shoot planned',
+        text: `${result.plan.nodes.length} shots saved as a canvas. Nothing has been generated yet.`,
+      });
+      navigate(`/canvas?canvas=${encodeURIComponent(result.canvas.id)}`);
+    } catch (err) {
+      setError(err);
+    } finally {
+      setFactoryBusy('');
     }
   };
 
@@ -246,6 +281,32 @@ export function MarketingScreen() {
                     </span>
                     {busy ? 'Queueing…' : 'Render the campaign'}
                   </Button>
+                </div>
+
+                <div style={{ marginTop: 16 }}>
+                  <p className="panel__title" style={{ marginBottom: 6 }}>
+                    Or plan a multi-shot shoot
+                  </p>
+                  <p className="dim" style={{ margin: '0 0 8px', fontSize: 12 }}>
+                    A factory saves a canvas of shots — nothing is generated until you press Run on the canvas.
+                  </p>
+                  <div className="row row--tight" style={{ flexWrap: 'wrap', gap: 8 }}>
+                    {(factoryKinds.data ?? []).map((factory) => (
+                      <Button
+                        key={factory.kind}
+                        onClick={() => void makeShoot(factory.kind)}
+                        disabled={!modelId || Boolean(factoryBusy)}
+                        title={factory.summary}
+                      >
+                        {factoryBusy === factory.kind ? 'Planning…' : `${factory.label} · ${factory.node_count} shots`}
+                      </Button>
+                    ))}
+                    {!(factoryKinds.data ?? []).length ? (
+                      <span className="dim" style={{ fontSize: 12 }}>
+                        The factory list could not be read.
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
               </div>
 

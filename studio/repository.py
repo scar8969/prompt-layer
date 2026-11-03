@@ -5068,6 +5068,8 @@ class CanvasRepository(_Repository):
             "description": truncate(str(values.get("description") or ""), 4000) or "",
             "nodes_json": json_dumps(nodes),
             "edges_json": json_dumps(edges),
+            "revision": 1,
+            "updated_by_user_id": owner,
             "created_at": stamp,
             "updated_at": stamp,
         }
@@ -5075,21 +5077,66 @@ class CanvasRepository(_Repository):
             tx.insert(self.TABLE, record)
         return self.get(scope, record["id"])
 
-    def update(self, workspace_id: str, canvas_id: str, payload: Mapping[str, Any]) -> Dict[str, Any]:
-        """Change a canvas. The whole graph is re-validated, never patched blind."""
+    def update(
+        self,
+        workspace_id: str,
+        canvas_id: str,
+        payload: Mapping[str, Any],
+        *,
+        user_id: str = "",
+        expected_revision: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Change a canvas. The whole graph is re-validated, never patched blind.
+
+        Optimistic concurrency: when the caller sends the revision it read, the
+        write only lands if the row is still at that revision. A second editor
+        whose canvas moved underneath them gets ``CONFLICT`` with the current
+        revision and the person who wrote it, rather than silently overwriting
+        work that is not theirs. Omitting the revision keeps the old
+        last-write-wins behaviour for callers that genuinely own the document
+        (a migration, a script), and the route always sends one.
+        """
         from .canvas import normalise_graph
 
         scope = _require_workspace(workspace_id)
-        self.get(scope, canvas_id)
+        current = self.get(scope, canvas_id)
         values = _mapping(payload, "canvas")
         _reject_unknown(values, ("name", "description", "nodes", "edges"), "canvas")
-        updates: Dict[str, Any] = {"updated_at": now_iso()}
+
+        if expected_revision is not None:
+            try:
+                wanted = int(expected_revision)
+            except (TypeError, ValueError):
+                raise ApiError(
+                    VALIDATION_FAILED,
+                    "expected_revision must be a whole number.",
+                    field="expected_revision",
+                ) from None
+            if wanted != int(current.get("revision") or 1):
+                raise ApiError(
+                    CONFLICT,
+                    "This canvas changed since you opened it.",
+                    field="expected_revision",
+                    details={
+                        "your_revision": wanted,
+                        "current_revision": int(current.get("revision") or 1),
+                        "updated_by_user_id": current.get("updated_by_user_id"),
+                        "updated_at": current.get("updated_at"),
+                    },
+                    hint="Reload the canvas and reapply your change.",
+                )
+
+        updates: Dict[str, Any] = {
+            "updated_at": now_iso(),
+            "revision": int(current.get("revision") or 1) + 1,
+        }
+        if user_id:
+            updates["updated_by_user_id"] = _require_text(user_id, "user_id")
         if "name" in values:
             updates["name"] = _require_text(values.get("name"), "name", limit=200)
         if "description" in values:
             updates["description"] = truncate(str(values.get("description") or ""), 4000) or ""
         if "nodes" in values or "edges" in values:
-            current = self.get(scope, canvas_id)
             nodes, edges, _order = normalise_graph(
                 values.get("nodes", current.get("nodes") or []),
                 values.get("edges", current.get("edges") or []),
@@ -5097,7 +5144,9 @@ class CanvasRepository(_Repository):
             updates["nodes_json"] = json_dumps(nodes)
             updates["edges_json"] = json_dumps(edges)
         with self._db.write_tx() as tx:
-            self._db.update_where(self.TABLE, updates, "id = ? AND workspace_id = ?", (canvas_id, scope))
+            self._db.update_where(
+                self.TABLE, updates, "id = ? AND workspace_id = ?", (canvas_id, scope)
+            )
         return self.get(scope, canvas_id)
 
     def soft_delete(self, workspace_id: str, canvas_id: str) -> Dict[str, Any]:

@@ -7,6 +7,31 @@ the change. The repo's two products are siblings: **Prompt Layer**
 
 ## Unreleased
 
+### Factories and conflict-safe canvases
+
+The two surfaces left partial after the last pass are finished, and both stay on
+the existing queue.
+
+- **Factories.** `/api/factories` plans a UGC shoot (four beats), a fashion
+  lookbook (four looks) or a photodump (one subject across catalogue styles) into
+  a canvas of shots. Planning is a pure function and costs nothing; saving stores
+  a canvas; only running it queues jobs. An unknown kind, style or field is
+  refused by name, and a plan with no product is refused rather than filled with
+  a placeholder.
+- **Conflict-safe canvas editing.** Every canvas carries a revision (migration
+  0010) and the id of the last writer. A save carries the revision it read; a
+  stale save is a `409` naming the current revision instead of a silent
+  overwrite. With no unsaved work an editor adopts newer revisions by polling;
+  with unsaved work it declines to, so a remote save never lands on top of a
+  half-finished drag. This is not live cursors, and the interface says so.
+
+Two behavioural fixes came out of the tests: the canvas topological order was
+sorted x-first, which interleaved rows on a grid (it now reads the top row first,
+then left to right), and `/canvas?canvas=<id>` now opens the canvas a factory just
+saved instead of silently ignoring the link.
+
+798 tests pass.
+
 ### A BYOK Higgsfield: previews, canvas, sound, marketing, MCP
 
 The merge left four surfaces a BYOK creative studio still needed. They are built

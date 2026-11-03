@@ -15,6 +15,7 @@ from . import (
     library,
     models,
     marketing,
+    factories,
     previews,
     prompt,
     system,
@@ -43,6 +44,7 @@ def register_routes(router: Any, app: Any) -> None:
         previews,
         canvas,
         marketing,
+        factories,
     ):
         module.register_routes(router, app)
 

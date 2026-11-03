@@ -428,6 +428,23 @@ to a missing node, an edge from a `note`, or an unknown edge role. The run route
 a **read that advances the run** — the same rule as `/api/jobs/{id}`: the poll is
 the clock, and queueing is idempotent.
 
+Every canvas carries `revision` and `updated_by_user_id`. A `PATCH` may send
+`expected_revision`; when the row has moved on, the answer is `409 conflict` with
+`details.current_revision`, not a silent overwrite. Omitting it keeps
+last-write-wins for scripts that own the document.
+
+### Factories
+
+| method | path | auth | body / query | success key | error codes |
+|---|---|---|---|---|---|
+| GET | `/api/factories` | yes | - | `factories[]` | `unauthenticated` |
+| POST | `/api/factories/plan` | yes | `kind`, `model_id`, `product`, `benefit?`, `audience?`, `subject?`, `body?`, `lens?`, `lighting?`, `palette?`, `styles?` | `plan` | `validation_failed`, `not_found` |
+| POST | `/api/factories/canvases` | yes (editor) | the plan fields plus `name?` | `canvas`, `plan` | `validation_failed`, `not_found` |
+
+Kinds: `ugc` (four beats), `fashion` (four looks), `photodump` (one subject across
+catalogue styles). Planning is pure and costs nothing; saving stores a canvas; only
+running the canvas queues jobs. An unknown field, kind or style is refused by name.
+
 ### Sound on a clip
 
 | method | path | auth | body | success key | error codes |
