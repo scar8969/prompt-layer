@@ -14,8 +14,8 @@ was invisible from the screen where the prompt actually ran. They are merged:
 | **Image Studio / Video Studio** (`/image`, `/video`) | Preset gallery, model picker, camera moves, references, queue → artifact. |
 | **API Connections** (`/connections`) | Bring your own key. Pick a documented endpoint from the catalogue, paste the key, and the model is registered with the modes and controls the provider really has. |
 | **Explore / Director's Panel** (`/explore`, `/cinema`) | A wall of sourced looks, and a compiler that turns body, glass, light and grade into one prompt, clause by clause. |
-| **Canvas** (`/canvas`) | A saved DAG of generate and note nodes. A node is queued only after the nodes feeding it have a stored output. |
-| **Marketing Studio** (`/marketing`) | A product page read deterministically, a brief with per-field provenance, and one real render per format on your key. |
+| **Canvas** (`/canvas`) | A saved DAG of generate and note nodes. A node is queued only after the nodes feeding it have a stored output; saves carry a revision, so two editors cannot silently overwrite each other. |
+| **Marketing Studio** (`/marketing`) | A product page read deterministically, a brief with per-field provenance, and one real render per format on your key. The factories beside it plan a UGC shoot, a fashion lookbook or a photodump into a canvas. |
 | **Models** (`/models/:id`) | One model: declared capabilities, parameter schema, and the prompt layers documented for its endpoint. |
 
 There is also an MCP server for the catalogue (`scripts/preset_mcp.py`): five

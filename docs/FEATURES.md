@@ -13,7 +13,7 @@ to claim:
 |---|---|
 | **Built** | It works here today, on any model you connect, and the tests say so. |
 | **Wired to your key** | The capability exists as a route and a control, and it works if the model you connected declares it. Whether it runs is the provider's answer, not ours. |
-| **Not built** | Needs something this repository does not have: a model we train, an audio pipeline, a canvas runtime, or a provider-specific endpoint. Named rather than promised. |
+| **Not built** | Needs something this repository does not have: a model we train, a provider-specific wire format, or a public feed of other people's work. Named rather than promised. |
 
 ---
 
