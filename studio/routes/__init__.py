@@ -8,6 +8,7 @@ from . import (
     assets,
     auth,
     canvas,
+    chat,
     cinema,
     connections,
     generations,
@@ -16,6 +17,7 @@ from . import (
     models,
     marketing,
     factories,
+    onboarding,
     previews,
     prompt,
     system,
@@ -45,6 +47,8 @@ def register_routes(router: Any, app: Any) -> None:
         canvas,
         marketing,
         factories,
+        onboarding,
+        chat,
     ):
         module.register_routes(router, app)
 

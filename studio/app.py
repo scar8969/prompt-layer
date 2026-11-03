@@ -36,6 +36,8 @@ from .services.assets import AssetService
 from .services.connections import ConnectionService
 from .services.generations import GenerationService
 from .services.canvas_runs import CanvasRunService
+from .services.chat import ChatService
+from .services.onboarding import OnboardingService
 from .services.runner import GenerationRunner
 from .storage import store_from_config
 
@@ -64,6 +66,8 @@ class StudioApp:
     assets: AssetService
     generations: GenerationService
     canvas_runs: Any
+    chat: Any
+    onboarding: Any
     runner: GenerationRunner
     router: Router
     http: HttpApp
@@ -170,6 +174,8 @@ def build_app(config: Optional[Configuration] = None, *, start_worker: bool = Fa
         database=db,
     )
     canvas_runs = CanvasRunService(repos, generations, runner)
+    chat = ChatService(repos, connections, settings)
+    onboarding = OnboardingService(repos, connections, chat, settings)
 
     router = Router()
     http_app = HttpApp(
@@ -188,6 +194,8 @@ def build_app(config: Optional[Configuration] = None, *, start_worker: bool = Fa
         assets=assets,
         generations=generations,
         canvas_runs=canvas_runs,
+        chat=chat,
+        onboarding=onboarding,
         runner=runner,
         router=router,
         http=http_app,
