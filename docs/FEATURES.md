@@ -27,7 +27,7 @@ to claim:
 | Soul ID (train an identity from 20–80 photos) | **Partial** | A character stores a description and reference images; casting it appends the description to the prompt and attaches its references. No training, so the face is locked by references, not by weights. |
 | Soul HEX (palette from a photo) | **Partial** | `color_palette` is a reference role and the prompt layer reports whether the model accepts one. No palette extraction tool. |
 | Moodboard (style learned from up to 80 refs) | **Not built** | Some endpoints take several references; there is no moodboard object that learns a style. |
-| Photodump (15 images, 15 styles, one character) | **Not built** | Batch count is bounded by the model's declared `max_outputs`; the 15-style sweep is not a feature here. |
+| Photodump (15 images, 15 styles, one character) | **Built** | `/api/factories` with `kind: "photodump"` plans one subject across catalogue styles into a canvas, one node per style, each naming the preset it came from. It is capped at 12 styles per run, and the batch still runs one job per node. |
 | Inpaint / Draw to Edit | **Built** | `POST /api/generations/{id}/edit` with `inpaint`; the job screen has the form. A mask is optional and only offered when the model declares `inpaint`. |
 | Outpaint (expand the canvas) | **Wired to your key** | Same route with `outpaint` and an expansion box; requires the model to declare outpaint. |
 | Multi-reference | **Wired to your key** | Requests carry a reference list up to the endpoint's declared maximum. |
