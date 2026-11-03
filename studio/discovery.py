@@ -62,8 +62,8 @@ def api_root(base_url: str) -> str:
 #: matches, so the specific families come before the general chat patterns:
 #: `gpt-image-2` is an image model, not a chat model with "gpt" in its name.
 _PATTERNS: Tuple[Tuple[str, re.Pattern], ...] = (
-    (EMBEDDING, re.compile(r"(embed|embedding|bge-|e5-|text-embedding)", re.I)),
     (RERANK, re.compile(r"(rerank|re-rank)", re.I)),
+    (EMBEDDING, re.compile(r"(embed|embedding|bge-|e5-|text-embedding)", re.I)),
     (MODERATION, re.compile(r"(moderation|omni-moderation)", re.I)),
     (AUDIO, re.compile(r"(^|[-_/])(tts|asr|stt|whisper|speech|voice|audio|music|suno|eleven)", re.I)),
     (

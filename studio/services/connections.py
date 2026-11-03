@@ -352,7 +352,13 @@ class ConnectionService:
             if error.details is None:
                 error.details = {"url": redact_url(text)}
             raise
-        return target.url if hasattr(target, "url") else text
+        # The root path that `urlsplit` fills in for `https://host` is not part of
+        # the URL the user typed, and a stored base URL that grew a trailing slash
+        # no longer compares equal to the one they will paste again. Paths with a
+        # real segment (`/v1/`) lose the same slash for the same reason: the API
+        # root is appended by the caller, not by the database.
+        checked = target.url if hasattr(target, "url") else text
+        return checked.rstrip("/") or checked
 
     def normalise_create(self, session: Any, payload: Mapping[str, Any]) -> Dict[str, Any]:
         """Validate a create payload into the row the repository will insert.

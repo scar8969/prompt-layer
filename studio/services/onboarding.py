@@ -223,18 +223,31 @@ class OnboardingService:
         adapter_type = (
             "openai_images" if any(item["family"] == discovery.IMAGE for item in chosen) else "declarative_http"
         )
-        created = self.connections.create(
-            session,
-            {
-                "name": name,
-                "adapter_type": adapter_type,
-                "base_url": base_url,
-                "auth_scheme": "bearer",
-                "credential": api_key,
-                "allowed_hosts": clean_allowed_hosts(payload.get("allowed_hosts")),
-                "models": [],
-            },
-        )
+        create_payload: Dict[str, Any] = {
+            "name": name,
+            "adapter_type": adapter_type,
+            "base_url": base_url,
+            "auth_scheme": "bearer",
+            "credential": api_key,
+            "allowed_hosts": clean_allowed_hosts(payload.get("allowed_hosts")),
+            "models": [],
+        }
+        if adapter_type == "declarative_http":
+            # A chat-only connection has no generation mapping to describe, but a
+            # declarative provider without one is refused at save time -- correctly,
+            # because a queued provider that cannot say where to submit is a button
+            # that cannot work. The conversation protocol is the one mapping that is
+            # true here: one POST, the answer already in the response.
+            create_payload["mapping"] = {
+                "structure": "sync",
+                "submit": {
+                    "path": discovery.api_root(base_url) + "/chat/completions",
+                    "prompt_field": "messages",
+                    "model_field": "model",
+                },
+                "response": {"type": "json", "outputs_path": "choices.0.message.content"},
+            }
+        created = self.connections.create(session, create_payload)
         connection = created["connection"]
         registered: List[Dict[str, Any]] = []
         for item in chosen:
