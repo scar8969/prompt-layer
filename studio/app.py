@@ -87,7 +87,11 @@ class StudioApp:
             "environment": self.config.environment,
             "time_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "database": "ok" if self.db.ping() else "unavailable",
-            "database_backend": "sqlite",
+            # Read from the live handle, not from what this deployment was built
+            # for: the same image runs on SQLite locally and on Postgres when
+            # STUDIO_DATABASE_URL is set, and a status page that guesses is worse
+            # than one that omits the field.
+            "database_backend": "postgres" if getattr(self.db, "is_postgres", False) else "sqlite",
             "storage_backend": getattr(self.store, "backend_name", "unknown"),
             "adapters": self.connections.types(),
             "mock_provider_enabled": bool(self.config.mock_provider_enabled),
