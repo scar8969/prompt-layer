@@ -136,6 +136,24 @@ export function withApiPrefix(path: string): string {
   return `${API_PREFIX}${path.startsWith('/') ? '' : '/'}${path}`;
 }
 
+/** The same-origin API root, before any mount prefix is added. */
+const API_ROOT = '/api';
+
+/**
+ * A URL the server returned, made usable from the page.
+ *
+ * Responses carry same-origin paths (`/api/assets/.../content`,
+ * `/api/preset-cards/<key>.svg`) and absolute provider URLs. Only the first kind
+ * needs the mount prefix: `<img src>` does not go through `apiRequest`, so
+ * without this a deployed gallery points every card at a path Vercel does not
+ * route. Absolute URLs, data: and blob: are left exactly as the server sent them.
+ */
+export function apiUrl(value: string | null | undefined): string | null {
+  if (!value) return null;
+  if (!value.startsWith(`${API_ROOT}/`)) return value;
+  return withApiPrefix(value);
+}
+
 function buildUrl(path: string, query?: RequestOptions['query']): string {
   const base = typeof location === 'undefined' ? 'http://localhost' : location.origin;
   const url = new URL(withApiPrefix(path), base);

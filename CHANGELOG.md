@@ -19,6 +19,11 @@ prefix is present and that every path the client calls has a backend route. The
 local server now strips the same prefix, so one committed bundle works both
 served locally and mounted on the platform.
 
+Resource URLs the server returns — asset `content_url`, `thumbnail_url`, preset
+style cards — are prefixed the same way. An `<img src>` does not pass through the
+request helper, which is why the deployed galleries were empty while the API
+worked.
+
 822 tests pass.
 
 ### Sign-in recovers from a stale session cookie

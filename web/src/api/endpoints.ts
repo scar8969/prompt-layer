@@ -1,4 +1,4 @@
-import { ApiError, apiRequest, envelope } from './client.ts';
+import { ApiError, apiRequest, apiUrl, envelope } from './client.ts';
 import type {
   Asset,
   AssetListResponse,
@@ -291,8 +291,8 @@ export function readAsset(raw: unknown): Asset {
     duration_seconds: num(r.duration_seconds),
     is_favorite: bool(r.is_favorite) ?? false,
     is_mock: false,
-    content_url: str(r.content_url) ?? `/api/assets/${id}/content`,
-    thumbnail_url: str(r.thumbnail_url) ?? (id ? `/api/assets/${id}/thumbnail` : null),
+    content_url: apiUrl(str(r.content_url) ?? `/api/assets/${id}/content`) ?? '',
+    thumbnail_url: apiUrl(str(r.thumbnail_url) ?? (id ? `/api/assets/${id}/thumbnail` : null)),
     created_at: str(r.created_at) ?? '',
     source: str(r.source) ?? 'uploaded',
   };
@@ -308,7 +308,7 @@ export function readOutput(raw: unknown): Job['outputs'][number] {
     asset_id: assetId,
     // A stored output carries the provider's URL and the asset it became; the
     // size, dimensions and type live on the asset, not on this row.
-    url: str(r.provider_url) ?? (assetId ? `/api/assets/${assetId}/content` : null),
+    url: apiUrl(str(r.provider_url) ?? (assetId ? `/api/assets/${assetId}/content` : null)),
     content_type: null,
     width: null,
     height: null,
@@ -440,7 +440,7 @@ function readPreset(raw: unknown): Preset {
     parameters: isRecord(r.defaults) ? r.defaults : null,
     camera: isRecord(r.camera_settings) ? r.camera_settings : null,
     notes: str(r.notes),
-    thumbnail_url: str(r.thumbnail_url),
+    thumbnail_url: apiUrl(str(r.thumbnail_url)),
     preview: isRecord(r.preview) ? readPresetPreview(r.preview) : null,
     is_favorite: false,
     created_at: str(r.created_at),
@@ -456,8 +456,8 @@ function readPresetPreview(raw: unknown): PresetPreview {
     status: str(r.status) ?? '',
     model_id: str(r.model_id) ?? '',
     asset_id: str(r.asset_id),
-    url: str(r.url),
-    thumbnail_url: str(r.thumbnail_url),
+    url: apiUrl(str(r.url)),
+    thumbnail_url: apiUrl(str(r.thumbnail_url)),
     error: str(r.error) ?? '',
     created_at: str(r.created_at),
   };
