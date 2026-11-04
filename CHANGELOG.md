@@ -7,6 +7,14 @@ the change. The repo's two products are siblings: **Prompt Layer**
 
 ## Unreleased
 
+### Reference images can now be uploaded from the studio
+
+The References section of Image Studio and Video Studio showed only assets that
+were already in the library, with no way to add one. A Dropzone sat unused.
+Now an image dropped or chosen there is uploaded to `POST /api/assets`,
+stored in the library, and attached to the request as a reference — all before
+you press Generate.
+
 ### The deployed client calls the mount it is actually served from
 
 `web/dist` had been rebuilt without `VITE_STUDIO_API_PREFIX`, so every request

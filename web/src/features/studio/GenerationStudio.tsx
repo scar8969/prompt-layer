@@ -26,7 +26,7 @@ import { Checkbox, Select, TextArea, TextInput } from '../../components/Field.ts
 import { ErrorNotice } from '../../components/ErrorNotice.tsx';
 import { ErrorState, LoadingState } from '../../components/State.tsx';
 import { Icon } from '../../components/Icon.tsx';
-import { AssetImage, MediaCanvas, outputToMedia } from '../../components/Media.tsx';
+import { AssetImage, MediaCanvas, Dropzone, outputToMedia } from '../../components/Media.tsx';
 import { Link, useRouter } from '../../app/router.tsx';
 import { invalidate, useQuery } from '../../state/query.ts';
 import { useModelCapabilities, useModelParameters, useModels } from '../../state/models.ts';
@@ -64,6 +64,42 @@ export function GenerationStudio({ kind }: { kind: StudioKind }) {
   const [projectId, setProjectId] = useState('');
   const [presetId, setPresetId] = useState('');
   const [references, setReferences] = useState<ReferenceInput[]>([]);
+  const [referenceUploading, setReferenceUploading] = useState(false);
+
+  /** Read a chosen file as base64 and register it as a reference image asset. */
+  const uploadReferenceImages = async (files: File[]) => {
+    if (!model) return;
+    setReferenceUploading(true);
+    try {
+      for (const file of files) {
+        const dataUrl = await readAsDataUrl(file);
+        const base64 = dataUrl.split(',', 2)[1] ?? '';
+        const asset = await assetsApi.upload({
+          file_name: file.name,
+          content_type: file.type || 'image/png',
+          data_base64: base64,
+          project_id: projectId || null,
+        });
+        // The asset is real now: offer it as a reference right away.
+        setReferences((current) => {
+          const known = new Set(current.map((item) => item.asset_id));
+          if (known.has(asset.id)) return current;
+          return [...current, { asset_id: asset.id, role: 'reference' }];
+        });
+      }
+      // Refresh the library so the new asset shows in the reference grid.
+      referenceAssets.reload();
+      toasts.push({
+        tone: 'success',
+        title: 'Reference image uploaded',
+        text: `${files.length} file(s) added to the library and attached as references.`,
+      });
+    } catch (err) {
+      setSubmitError(err);
+    } finally {
+      setReferenceUploading(false);
+    }
+  };
   const [duration, setDuration] = useState<number | null>(null);
   const [aspectRatio, setAspectRatio] = useState('');
   const [resolution, setResolution] = useState('');
@@ -543,8 +579,16 @@ export function GenerationStudio({ kind }: { kind: StudioKind }) {
         <Section title="References">
           <p className="muted" style={{ margin: 0 }}>
             Reference images are picked from your asset library. Only real assets the backend can serve appear here.
+            Upload an image to add it to the library and attach it to this request.
           </p>
           <div className="stack stack--tight">
+            <Dropzone
+              accept="image/*"
+              onFiles={uploadReferenceImages}
+              disabled={referenceUploading}
+              disabledReason={referenceUploading ? 'Uploading reference image…' : null}
+              hint="PNG, JPEG or WebP. The file is stored in your library and attached as a reference."
+            />
             {(referenceAssets.data ?? []).slice(0, 8).map((asset) => {
               const selected = references.some((reference) => reference.asset_id === asset.id);
               const roles = capabilities.data?.reference_roles ?? [];
@@ -857,6 +901,16 @@ export function GenerationStudio({ kind }: { kind: StudioKind }) {
       </Drawer>
     </div>
   );
+}
+
+/** Read one file as a data URL and return the base64 payload (no data: prefix). */
+function readAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ''));
+    reader.onerror = () => reject(reader.error ?? new Error('Failed to read file.'));
+    reader.readAsDataURL(file);
+  });
 }
 
 /**
